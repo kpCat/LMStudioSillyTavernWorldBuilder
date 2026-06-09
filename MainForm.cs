@@ -1676,7 +1676,15 @@ public partial class MainForm : Form
         var profile = string.Equals(purpose, "active", StringComparison.OrdinalIgnoreCase)
             ? _lmProfileService.GetActiveProfile(_appSettings)
             : _lmProfileService.ResolveProfileForPurpose(_appSettings, purpose);
-        _lmProfileService.ApplyProfileToLegacySettings(_appSettings, profile);
+        if (string.Equals(purpose, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            _lmProfileService.ApplyProfileToLegacySettings(_appSettings, profile);
+        }
+        else
+        {
+            _lmProfileService.ApplyProfileRuntimeSettings(_appSettings, profile);
+        }
+
         _pipelineService.GenerationSettingsUi = LmStudioProfileService.Clone(profile.Generation);
         LogLmProfileUse(profile, purpose);
         return LmStudioProfileService.Clone(profile.Settings);

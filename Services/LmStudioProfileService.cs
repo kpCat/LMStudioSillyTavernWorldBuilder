@@ -120,6 +120,11 @@ internal sealed class LmStudioProfileService
     public void ApplyProfileToLegacySettings(AppSettings settings, LmStudioModelProfile profile)
     {
         settings.ActiveLmStudioProfileId = profile.Id;
+        ApplyProfileRuntimeSettings(settings, profile);
+    }
+
+    public void ApplyProfileRuntimeSettings(AppSettings settings, LmStudioModelProfile profile)
+    {
         settings.LmStudio = Clone(profile.Settings);
         settings.Generation = Clone(profile.Generation);
     }

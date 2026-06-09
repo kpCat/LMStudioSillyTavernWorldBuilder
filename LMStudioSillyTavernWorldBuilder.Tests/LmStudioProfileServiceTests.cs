@@ -104,6 +104,22 @@ public sealed class LmStudioProfileServiceTests
     }
 
     [Fact]
+    public void ApplyProfileRuntimeSettings_DoesNotChangeActiveProfile()
+    {
+        var settings = CreateSettingsWithProfiles(autoSelect: true);
+        settings.ActiveLmStudioProfileId = "default";
+        var profile = settings.LmStudioProfiles.Single(x => x.Id == "large");
+
+        new LmStudioProfileService().ApplyProfileRuntimeSettings(settings, profile);
+
+        Assert.Equal("default", settings.ActiveLmStudioProfileId);
+        Assert.Equal("large-model", settings.LmStudio.ModelId);
+        Assert.Equal(96000, settings.Generation.MaxInputContextTokens);
+        Assert.Equal(8192, settings.Generation.MaxOutputTokens);
+        Assert.Equal(3, settings.Generation.ApproxCharsPerToken);
+    }
+
+    [Fact]
     public void DeleteProfile_NormalizesWithoutZeroUsableProfiles()
     {
         var settings = CreateSettingsWithProfiles(autoSelect: true);
