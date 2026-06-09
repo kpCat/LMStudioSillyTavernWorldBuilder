@@ -166,89 +166,31 @@ internal sealed class GameDraftService
             throw new InvalidOperationException("Draft has validation errors and cannot be applied.");
         }
 
+        var candidate = _cloneService.Clone(project);
+        var changedFiles = new List<GameDraftFile>();
         foreach (var file in draft.Files)
         {
-            var path = Path.Combine(project.Summary.ProjectPath, file.RelativePath);
-            if (!File.Exists(path))
+            if (await ApplyDraftFileToProjectAsync(candidate, file, project.Summary.ProjectPath, token))
             {
-                file.Status = "Applied";
-                continue;
+                changedFiles.Add(file);
             }
+        }
 
-            switch (file.EntityType)
-            {
-                case "stats":
-                    Upsert(project.Stats, await ReadJsonAsync<GameStatDefinition>(path, token), x => x.Id);
-                    break;
-                case "skills":
-                    Upsert(project.Skills, await ReadJsonAsync<GameSkillDefinition>(path, token), x => x.Id);
-                    break;
-                case "items":
-                    Upsert(project.Items, await ReadJsonAsync<GameItemDefinition>(path, token), x => x.Id);
-                    break;
-                case "equipment-slots":
-                    Upsert(project.EquipmentSlots, await ReadJsonAsync<GameEquipmentSlotDefinition>(path, token), x => x.Id);
-                    break;
-                case "elements":
-                    Upsert(project.Elements, await ReadJsonAsync<GameElementDefinition>(path, token), x => x.Id);
-                    break;
-                case "currencies":
-                    Upsert(project.Currencies, await ReadJsonAsync<GameCurrencyDefinition>(path, token), x => x.Id);
-                    break;
-                case "variables":
-                    Upsert(project.Variables, await ReadJsonAsync<GameVariableDefinition>(path, token), x => x.Id);
-                    break;
-                case "characters":
-                    Upsert(project.Characters, await ReadJsonAsync<GameCharacter>(path, token), x => x.Id);
-                    break;
-                case "relationships":
-                    Upsert(project.Relationships, await ReadJsonAsync<GameRelationshipDefinition>(path, token), x => x.CharacterId);
-                    break;
-                case "locations":
-                    Upsert(project.Locations, await ReadJsonAsync<GameLocation>(path, token), x => x.Id);
-                    break;
-                case "location-connections":
-                    Upsert(project.LocationConnections, await ReadJsonAsync<GameLocationConnection>(path, token), x => x.Id);
-                    break;
-                case "location-states":
-                    Upsert(project.LocationStates, await ReadJsonAsync<GameLocationStateDefinition>(path, token), x => x.Id);
-                    break;
-                case "scenes":
-                    Upsert(project.Scenes, await ReadJsonAsync<GameScene>(path, token), x => x.Id);
-                    break;
-                case "quests":
-                    Upsert(project.Quests, await ReadJsonAsync<GameQuest>(path, token), x => x.Id);
-                    break;
-                case "encounters":
-                    Upsert(project.Encounters, await ReadJsonAsync<GameEncounterDefinition>(path, token), x => x.Id);
-                    break;
-                case "actions":
-                    Upsert(project.Actions, await ReadJsonAsync<GameActionDefinition>(path, token), x => x.Id);
-                    break;
-                case "formulas":
-                    Upsert(project.Formulas, await ReadJsonAsync<GameFormulaDefinition>(path, token), x => x.Id);
-                    break;
-                case "status-effects":
-                    Upsert(project.StatusEffects, await ReadJsonAsync<GameStatusEffectDefinition>(path, token), x => x.Id);
-                    break;
-                case "progression":
-                    Upsert(project.ProgressionNodes, await ReadJsonAsync<GameProgressionNodeDefinition>(path, token), x => x.Id);
-                    break;
-                case "world-state":
-                    GameWorldStateMergeService.MergeInto(project.WorldState, await ReadJsonAsync<GameWorldStateDefinition>(path, token));
-                    break;
-                case "mechanics":
-                    project.Mechanics = await ReadJsonAsync<GameMechanicsDefinition>(path, token);
-                    break;
-                case "generation-preferences":
-                    project.GenerationPreferences = await ReadJsonAsync<GameGenerationPreferences>(path, token);
-                    break;
-                case "image-prompts":
-                    Upsert(project.ImagePrompts, await ReadJsonAsync<ImagePromptDefinition>(path, token), x => x.AssetId);
-                    break;
-            }
+        var candidateValidation = _validator.Validate(candidate);
+        if (!candidateValidation.IsValid)
+        {
+            throw new InvalidOperationException("Draft candidate has validation errors and cannot be applied: " + string.Join("; ", candidateValidation.Errors));
+        }
 
+        _cloneService.CopyMutableData(candidate, project);
+
+        foreach (var file in draft.Files)
+        {
             file.Status = "Applied";
+        }
+
+        foreach (var file in changedFiles)
+        {
             await _changeLogService.AppendChangeAsync(project, new GameChangeRecord
             {
                 Operation = "import",
@@ -262,6 +204,90 @@ internal sealed class GameDraftService
         }
 
         await SaveDraftManifestAsync(project, draft, token);
+    }
+
+    private async Task<bool> ApplyDraftFileToProjectAsync(GameProjectData target, GameDraftFile file, string projectPath, CancellationToken token)
+    {
+        var path = Path.Combine(projectPath, file.RelativePath);
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        switch (file.EntityType)
+        {
+            case "stats":
+                Upsert(target.Stats, await ReadJsonAsync<GameStatDefinition>(path, token), x => x.Id);
+                break;
+            case "skills":
+                Upsert(target.Skills, await ReadJsonAsync<GameSkillDefinition>(path, token), x => x.Id);
+                break;
+            case "items":
+                Upsert(target.Items, await ReadJsonAsync<GameItemDefinition>(path, token), x => x.Id);
+                break;
+            case "equipment-slots":
+                Upsert(target.EquipmentSlots, await ReadJsonAsync<GameEquipmentSlotDefinition>(path, token), x => x.Id);
+                break;
+            case "elements":
+                Upsert(target.Elements, await ReadJsonAsync<GameElementDefinition>(path, token), x => x.Id);
+                break;
+            case "currencies":
+                Upsert(target.Currencies, await ReadJsonAsync<GameCurrencyDefinition>(path, token), x => x.Id);
+                break;
+            case "variables":
+                Upsert(target.Variables, await ReadJsonAsync<GameVariableDefinition>(path, token), x => x.Id);
+                break;
+            case "characters":
+                Upsert(target.Characters, await ReadJsonAsync<GameCharacter>(path, token), x => x.Id);
+                break;
+            case "relationships":
+                Upsert(target.Relationships, await ReadJsonAsync<GameRelationshipDefinition>(path, token), x => x.CharacterId);
+                break;
+            case "locations":
+                Upsert(target.Locations, await ReadJsonAsync<GameLocation>(path, token), x => x.Id);
+                break;
+            case "location-connections":
+                Upsert(target.LocationConnections, await ReadJsonAsync<GameLocationConnection>(path, token), x => x.Id);
+                break;
+            case "location-states":
+                Upsert(target.LocationStates, await ReadJsonAsync<GameLocationStateDefinition>(path, token), x => x.Id);
+                break;
+            case "scenes":
+                Upsert(target.Scenes, await ReadJsonAsync<GameScene>(path, token), x => x.Id);
+                break;
+            case "quests":
+                Upsert(target.Quests, await ReadJsonAsync<GameQuest>(path, token), x => x.Id);
+                break;
+            case "encounters":
+                Upsert(target.Encounters, await ReadJsonAsync<GameEncounterDefinition>(path, token), x => x.Id);
+                break;
+            case "actions":
+                Upsert(target.Actions, await ReadJsonAsync<GameActionDefinition>(path, token), x => x.Id);
+                break;
+            case "formulas":
+                Upsert(target.Formulas, await ReadJsonAsync<GameFormulaDefinition>(path, token), x => x.Id);
+                break;
+            case "status-effects":
+                Upsert(target.StatusEffects, await ReadJsonAsync<GameStatusEffectDefinition>(path, token), x => x.Id);
+                break;
+            case "progression":
+                Upsert(target.ProgressionNodes, await ReadJsonAsync<GameProgressionNodeDefinition>(path, token), x => x.Id);
+                break;
+            case "world-state":
+                GameWorldStateMergeService.MergeInto(target.WorldState, await ReadJsonAsync<GameWorldStateDefinition>(path, token));
+                break;
+            case "mechanics":
+                target.Mechanics = await ReadJsonAsync<GameMechanicsDefinition>(path, token);
+                break;
+            case "generation-preferences":
+                target.GenerationPreferences = await ReadJsonAsync<GameGenerationPreferences>(path, token);
+                break;
+            case "image-prompts":
+                Upsert(target.ImagePrompts, await ReadJsonAsync<ImagePromptDefinition>(path, token), x => x.AssetId);
+                break;
+        }
+
+        return true;
     }
 
     internal async Task<GameDraftSession> ExtractGeneratedProjectAsync(GameProjectData project, string stage, GameProjectData generated, string rawOutput, CancellationToken token)

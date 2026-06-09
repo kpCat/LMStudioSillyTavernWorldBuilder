@@ -116,6 +116,7 @@ internal static class TestProjects
             Effects = { new GameEffect { Type = "variable", TargetId = "alarm", Amount = 1 } },
             CooldownTurns = 2
         });
+        project.Locations.Add(new GameLocation { Id = "location_start", Name = "Start" });
         project.Locations.Add(new GameLocation { Id = "locked_room", Name = "Locked Room" });
         project.LocationConnections.Add(new GameLocationConnection
         {

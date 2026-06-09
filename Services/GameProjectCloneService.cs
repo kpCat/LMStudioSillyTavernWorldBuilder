@@ -53,6 +53,7 @@ internal sealed class GameProjectCloneService
         target.ImagePrompts = copy.ImagePrompts;
         target.GeneratedImageCandidates = copy.GeneratedImageCandidates;
         target.AssetLinks = copy.AssetLinks;
+        target.GenerationSessions = copy.GenerationSessions;
         target.Brief = copy.Brief;
         target.Concept = copy.Concept;
         target.MvpPlan = copy.MvpPlan;
@@ -60,6 +61,8 @@ internal sealed class GameProjectCloneService
         target.ContentPlan = copy.ContentPlan;
         target.PromptPlan = copy.PromptPlan;
         target.GenerationPreferences = copy.GenerationPreferences;
+        target.DesignProfile = copy.DesignProfile;
+        target.CreationPlan = copy.CreationPlan;
 
         target.Summary.Id = summaryId;
         target.Summary.ProjectPath = summaryProjectPath;

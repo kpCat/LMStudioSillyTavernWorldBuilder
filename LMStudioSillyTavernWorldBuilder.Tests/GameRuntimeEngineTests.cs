@@ -467,6 +467,46 @@ public sealed class GameRuntimeEngineTests
     }
 
     [Fact]
+    public void FormulaEvaluator_MissingActorStatReturnsReadableDiagnostic()
+    {
+        var engine = new GameRuntimeEngine();
+        var project = TestProjects.CreateAdvancedProject();
+        var save = TestProjects.CreateSave(project);
+
+        var result = engine.TryEvaluateFormula(project, save, "actor.strength + 1");
+
+        Assert.False(result.Success);
+        Assert.Contains("Неизвестный actor stat", result.Message);
+    }
+
+    [Fact]
+    public void FormulaEvaluator_MissingTargetStatReturnsReadableDiagnostic()
+    {
+        var engine = new GameRuntimeEngine();
+        var project = TestProjects.CreateAdvancedProject();
+        var save = TestProjects.CreateSave(project);
+
+        var result = engine.TryEvaluateFormula(project, save, "target.defense + 1");
+
+        Assert.False(result.Success);
+        Assert.Contains("Неизвестный target stat", result.Message);
+    }
+
+    [Fact]
+    public void FormulaEvaluator_MissingSkillExperienceReturnsReadableDiagnostic()
+    {
+        var engine = new GameRuntimeEngine();
+        var project = TestProjects.CreateAdvancedProject();
+        var save = TestProjects.CreateSave(project);
+
+        var result = engine.TryEvaluateFormula(project, save, "skill.stealth.experience");
+
+        Assert.False(result.Success);
+        Assert.Contains("Неизвестный skill", result.Message);
+        Assert.DoesNotContain("????????", result.Message);
+    }
+
+    [Fact]
     public void FormulaEvaluator_DiceRandomAndClampFormulaIdWork()
     {
         var engine = new GameRuntimeEngine();

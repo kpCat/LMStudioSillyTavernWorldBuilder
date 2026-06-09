@@ -1,4 +1,4 @@
-using LMStudioSillyTavernWorldBuilder.Models;
+﻿using LMStudioSillyTavernWorldBuilder.Models;
 
 namespace LMStudioSillyTavernWorldBuilder.Runtime;
 
@@ -216,7 +216,7 @@ internal sealed class GameFormulaEvaluator
             return value;
         }
 
-        throw new InvalidOperationException("РќРµРёР·РІРµСЃС‚РЅС‹Р№ " + scope + " stat: " + id);
+        throw new InvalidOperationException("Неизвестный " + scope + " stat: " + id);
     }
 
     private int ResolveTimeSegmentOrder()
@@ -333,7 +333,7 @@ internal sealed class GameFormulaEvaluator
     {
         if (_project.Skills.All(x => !string.Equals(x.Id, skillId, StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException("??????????? skill: " + skillId);
+            throw new InvalidOperationException("Неизвестный skill: " + skillId);
         }
 
         return _save.KnownSkills

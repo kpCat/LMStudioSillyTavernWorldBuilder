@@ -150,4 +150,117 @@ public sealed class GameDraftServiceTests
         Assert.Contains(project.WorldState.Aspects, x => x.Id == "moon");
         Assert.Contains(project.WorldState.AmbientEvents, x => x.Id == "moon_rise");
     }
+
+    [Fact]
+    public async Task ApplyDraft_WhenLaterDraftFileIsBroken_DoesNotMutateProjectOrStatuses()
+    {
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = TestPaths.CreateTempDirectory();
+        var originalName = project.Stats.Single(x => x.Id == "will").Name;
+        var originalInitialValue = project.Stats.Single(x => x.Id == "will").InitialValue;
+        var draftFolder = Path.Combine(project.Summary.ProjectPath, "drafts", "draft_broken");
+        var statPath = Path.Combine(draftFolder, "stats", "will.json");
+        var scenePath = Path.Combine(draftFolder, "scenes", "scene_start.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(statPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(scenePath)!);
+        await File.WriteAllTextAsync(statPath, JsonSerializer.Serialize(
+            new GameStatDefinition { Id = "will", Name = "Changed Will", InitialValue = 99 },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        await File.WriteAllTextAsync(scenePath, "{ invalid json");
+        var draft = new GameDraftSession
+        {
+            SessionId = "draft_broken",
+            Validation = { IsValid = true },
+            Files =
+            {
+                CreateDraftFile(project, "stats", "will", statPath),
+                CreateDraftFile(project, "scenes", "scene_start", scenePath)
+            }
+        };
+
+        await Assert.ThrowsAsync<JsonException>(() => new GameDraftService().ApplyDraftAsync(project, draft, CancellationToken.None));
+
+        var stat = project.Stats.Single(x => x.Id == "will");
+        Assert.Equal(originalName, stat.Name);
+        Assert.Equal(originalInitialValue, stat.InitialValue);
+        Assert.DoesNotContain(draft.Files, x => string.Equals(x.Status, "Applied", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ApplyDraft_WhenCandidateValidationFails_DoesNotMutateProjectOrStatuses()
+    {
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = TestPaths.CreateTempDirectory();
+        var originalChoiceTarget = project.Scenes.Single(x => x.Id == "scene_start").Choices.Single(x => x.Id == "choice_go").NextSceneId;
+        var draftFolder = Path.Combine(project.Summary.ProjectPath, "drafts", "draft_invalid_candidate", "scenes");
+        Directory.CreateDirectory(draftFolder);
+        var scenePath = Path.Combine(draftFolder, "scene_start.json");
+        await File.WriteAllTextAsync(scenePath, JsonSerializer.Serialize(
+            new GameScene
+            {
+                Id = "scene_start",
+                Title = "Invalid Start",
+                Text = "Invalid text",
+                Choices =
+                {
+                    new GameChoice { Id = "choice_missing", Text = "Missing", NextSceneId = "scene_missing" }
+                }
+            },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var draft = new GameDraftSession
+        {
+            SessionId = "draft_invalid_candidate",
+            Validation = { IsValid = true },
+            Files = { CreateDraftFile(project, "scenes", "scene_start", scenePath) }
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new GameDraftService().ApplyDraftAsync(project, draft, CancellationToken.None));
+
+        var scene = project.Scenes.Single(x => x.Id == "scene_start");
+        Assert.Equal(originalChoiceTarget, scene.Choices.Single(x => x.Id == "choice_go").NextSceneId);
+        Assert.DoesNotContain(draft.Files, x => string.Equals(x.Status, "Applied", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ApplyDraft_WhenCandidateValidationPasses_AppliesAndMarksFiles()
+    {
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = TestPaths.CreateTempDirectory();
+        var draftFolder = Path.Combine(project.Summary.ProjectPath, "drafts", "draft_valid", "stats");
+        Directory.CreateDirectory(draftFolder);
+        var statPath = Path.Combine(draftFolder, "will.json");
+        await File.WriteAllTextAsync(statPath, JsonSerializer.Serialize(
+            new GameStatDefinition { Id = "will", Name = "Focused Will", InitialValue = 12 },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var draft = new GameDraftSession
+        {
+            SessionId = "draft_valid",
+            Validation = { IsValid = true },
+            Files = { CreateDraftFile(project, "stats", "will", statPath) }
+        };
+
+        await new GameDraftService().ApplyDraftAsync(project, draft, CancellationToken.None);
+
+        var stat = project.Stats.Single(x => x.Id == "will");
+        Assert.Equal("Focused Will", stat.Name);
+        Assert.Equal(12, stat.InitialValue);
+        Assert.All(draft.Files, file => Assert.Equal("Applied", file.Status));
+        var manifestPath = Path.Combine(project.Summary.ProjectPath, "drafts", draft.SessionId, "draft-manifest.json");
+        Assert.True(File.Exists(manifestPath));
+        var savedDraft = JsonSerializer.Deserialize<GameDraftSession>(
+            await File.ReadAllTextAsync(manifestPath),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(savedDraft);
+        Assert.All(savedDraft.Files, file => Assert.Equal("Applied", file.Status));
+    }
+
+    private static GameDraftFile CreateDraftFile(GameProjectData project, string entityType, string entityId, string path)
+    {
+        return new GameDraftFile
+        {
+            EntityType = entityType,
+            EntityId = entityId,
+            RelativePath = Path.GetRelativePath(project.Summary.ProjectPath, path).Replace('\\', '/')
+        };
+    }
 }
