@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Providers;
 
@@ -11,7 +12,8 @@ internal sealed class LmStudioService
     private readonly HttpClient _httpClient;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = false
     };
 
     public LmStudioService(HttpClient httpClient)

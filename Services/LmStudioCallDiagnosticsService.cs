@@ -22,11 +22,11 @@ internal sealed class LmStudioCallDiagnosticsService
         var requestChars = CountMessageCharacters(messages);
         var safeResponseText = responseText ?? string.Empty;
         var responseChars = safeResponseText.Length;
-        return CreateBaseRecord(stage, lmSettings, generationSettings, messages.Count, requestChars, maxInputContextTokens, approxCharsPerToken, elapsedMilliseconds) with
+        return CreateBaseRecord(stage, lmSettings, generationSettings, messages, requestChars, maxInputContextTokens, approxCharsPerToken, elapsedMilliseconds) with
         {
             Success = true,
             ResponseCharacterCount = responseChars,
-            EstimatedResponseTokens = _promptBudgetService.EstimateTokens(safeResponseText, approxCharsPerToken)
+            EstimatedResponseTokens = _promptBudgetService.EstimateTokensConservative(safeResponseText, approxCharsPerToken)
         };
     }
 
@@ -41,7 +41,7 @@ internal sealed class LmStudioCallDiagnosticsService
         Exception exception)
     {
         var requestChars = CountMessageCharacters(messages);
-        return CreateBaseRecord(stage, lmSettings, generationSettings, messages.Count, requestChars, maxInputContextTokens, approxCharsPerToken, elapsedMilliseconds) with
+        return CreateBaseRecord(stage, lmSettings, generationSettings, messages, requestChars, maxInputContextTokens, approxCharsPerToken, elapsedMilliseconds) with
         {
             Success = false,
             ErrorMessage = ShortError(exception.Message)
@@ -64,14 +64,14 @@ internal sealed class LmStudioCallDiagnosticsService
 
     public int EstimateTokens(string text, int approxCharsPerToken)
     {
-        return _promptBudgetService.EstimateTokens(text, approxCharsPerToken);
+        return _promptBudgetService.EstimateTokensConservative(text, approxCharsPerToken);
     }
 
     private LmStudioCallDiagnosticRecord CreateBaseRecord(
         string stage,
         LmStudioSettings lmSettings,
         GenerationSettings generationSettings,
-        int requestMessageCount,
+        IReadOnlyList<ChatMessage> messages,
         int requestCharacterCount,
         int maxInputContextTokens,
         int approxCharsPerToken,
@@ -83,9 +83,9 @@ internal sealed class LmStudioCallDiagnosticsService
             Stage = stage,
             Endpoint = LmStudioService.BuildChatCompletionsUrl(lmSettings.Endpoint),
             ModelId = lmSettings.ModelId.Trim(),
-            RequestMessageCount = requestMessageCount,
+            RequestMessageCount = messages.Count,
             RequestCharacterCount = requestCharacterCount,
-            EstimatedInputTokens = _promptBudgetService.EstimateTokens(new string('x', requestCharacterCount), approxCharsPerToken),
+            EstimatedInputTokens = _promptBudgetService.EstimateTokensConservative(string.Concat(messages.Select(x => x.Content ?? string.Empty)), approxCharsPerToken),
             MaxInputContextTokens = maxInputContextTokens,
             MaxOutputTokens = generationSettings.MaxTokens,
             Temperature = generationSettings.Temperature,

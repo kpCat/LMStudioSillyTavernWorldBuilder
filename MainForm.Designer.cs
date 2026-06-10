@@ -42,6 +42,7 @@ partial class MainForm
     private Button btnOpenDataFolder = null!;
     private Button btnResaveSplitJson = null!;
     private Button btnValidateProject = null!;
+    private Button btnDeleteProject = null!;
     private Label lblValidationResult = null!;
     private PropertyGrid pgProject = null!;
 
@@ -302,6 +303,7 @@ partial class MainForm
         btnOpenDataFolder = new Button();
         btnResaveSplitJson = new Button();
         btnValidateProject = new Button();
+        btnDeleteProject = new Button();
         pgProject = new PropertyGrid();
         tabDiscussion = new TabPage();
         discussionLayout = new TableLayoutPanel();
@@ -768,11 +770,12 @@ partial class MainForm
         // 
         // projectButtonsLayout
         // 
-        projectButtonsLayout.ColumnCount = 4;
-        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+        projectButtonsLayout.ColumnCount = 5;
+        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
+        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
+        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
+        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
+        projectButtonsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
         projectButtonsLayout.Controls.Add(btnNewGame, 0, 0);
         projectButtonsLayout.Controls.Add(btnLoadGame, 1, 0);
         projectButtonsLayout.Controls.Add(btnSaveGame, 2, 0);
@@ -781,6 +784,7 @@ partial class MainForm
         projectButtonsLayout.Controls.Add(btnOpenDataFolder, 1, 1);
         projectButtonsLayout.Controls.Add(btnResaveSplitJson, 2, 1);
         projectButtonsLayout.Controls.Add(btnValidateProject, 3, 1);
+        projectButtonsLayout.Controls.Add(btnDeleteProject, 4, 1);
         projectButtonsLayout.Dock = DockStyle.Bottom;
         projectButtonsLayout.Location = new Point(0, 678);
         projectButtonsLayout.Name = "projectButtonsLayout";
@@ -869,6 +873,16 @@ partial class MainForm
         btnValidateProject.TabIndex = 7;
         btnValidateProject.Text = "Проверить";
         btnValidateProject.Click += btnValidateProject_Click;
+        // 
+        // btnDeleteProject
+        // 
+        btnDeleteProject.Dock = DockStyle.Fill;
+        btnDeleteProject.Location = new Point(819, 45);
+        btnDeleteProject.Name = "btnDeleteProject";
+        btnDeleteProject.Size = new Size(199, 36);
+        btnDeleteProject.TabIndex = 8;
+        btnDeleteProject.Text = "РЈРґР°Р»РёС‚СЊ";
+        btnDeleteProject.Click += btnDeleteProject_Click;
         // 
         // pgProject
         // 
@@ -1449,6 +1463,7 @@ partial class MainForm
         lvDesignSlots.TabIndex = 0;
         lvDesignSlots.UseCompatibleStateImageBehavior = false;
         lvDesignSlots.View = View.Details;
+        lvDesignSlots.SelectedIndexChanged += lvDesignSlots_SelectedIndexChanged;
         // 
         // lvDesignQuestions
         // 

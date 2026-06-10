@@ -167,12 +167,18 @@ internal sealed class GameStorageService
     {
         Directory.CreateDirectory(gamesRoot);
         var result = new List<GameProjectSummary>();
+        var deletedRoot = Path.Combine(Path.GetFullPath(gamesRoot), "_deleted");
 
         foreach (var file in Directory.EnumerateFiles(gamesRoot, "game-project.json", SearchOption.AllDirectories))
         {
             try
             {
                 var folder = Path.GetDirectoryName(file) ?? string.Empty;
+                if (IsPathUnderDirectory(folder, deletedRoot))
+                {
+                    continue;
+                }
+
                 if (IsSplitProject(folder))
                 {
                     var root = JsonSerializer.Deserialize<GameProjectRootDocument>(File.ReadAllText(file), _jsonOptions);
@@ -602,6 +608,15 @@ internal sealed class GameStorageService
         }
 
         return project.Summary.ProjectPath;
+    }
+
+    private static bool IsPathUnderDirectory(string path, string directory)
+    {
+        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fullDirectory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return fullPath.Equals(fullDirectory, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string MakeSafeFolderName(string title, string fallback)

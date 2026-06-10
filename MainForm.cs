@@ -44,6 +44,7 @@ public partial class MainForm : Form
     private readonly Dictionary<string, string> _pipelineRulesByCategory = new(StringComparer.OrdinalIgnoreCase);
     private string _activePipelineRulesCategory = string.Empty;
     private bool _loadingSettingsUi;
+    private bool _loadingDesignSelection;
 
     public MainForm()
     {
@@ -137,6 +138,58 @@ public partial class MainForm : Form
         await LoadProjectAsync(summary.ProjectPath);
     }
 
+    private async void btnDeleteProject_Click(object? sender, EventArgs e)
+    {
+        if (lstProjects.SelectedItem is not GameProjectSummary summary)
+        {
+            MessageBox.Show(this, "Р’С‹Р±РµСЂРёС‚Рµ РїСЂРѕРµРєС‚ РІ СЃРїРёСЃРєРµ.", "РџСЂРѕРµРєС‚", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var title = string.IsNullOrWhiteSpace(summary.Title) ? summary.FolderName : summary.Title;
+        var confirmation = $"РЈРґР°Р»РёС‚СЊ РїСЂРѕРµРєС‚ \"{title}\"? РџР°РїРєР° Р±СѓРґРµС‚ РїРµСЂРµРјРµС‰РµРЅР° РІ _deleted РІРЅСѓС‚СЂРё РєР°С‚Р°Р»РѕРіР° РёРіСЂ.";
+        if (MessageBox.Show(this, confirmation, "РЈРґР°Р»РµРЅРёРµ РїСЂРѕРµРєС‚Р°", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        await RunSafeAsync(async () =>
+        {
+            var gamesRoot = Path.GetFullPath(GetGamesRoot());
+            var deletedRoot = Path.Combine(gamesRoot, "_deleted");
+            var projectPath = Path.GetFullPath(summary.ProjectPath);
+
+            if (!Directory.Exists(projectPath))
+            {
+                throw new InvalidOperationException("РџР°РїРєР° РїСЂРѕРµРєС‚Р° РЅРµ РЅР°Р№РґРµРЅР°: " + projectPath);
+            }
+
+            if (!IsPathUnderDirectory(projectPath, gamesRoot) || IsPathUnderDirectory(projectPath, deletedRoot))
+            {
+                throw new InvalidOperationException("РЈРґР°Р»РµРЅРёРµ РѕС‚РјРµРЅРµРЅРѕ: РїР°РїРєР° РїСЂРѕРµРєС‚Р° РЅРµ РЅР°С…РѕРґРёС‚СЃСЏ РІ Р°РєС‚РёРІРЅРѕРј РєР°С‚Р°Р»РѕРіРµ РёРіСЂ.");
+            }
+
+            Directory.CreateDirectory(deletedRoot);
+            var safeFolderName = MakeSafeDeletedFolderName(Path.GetFileName(projectPath));
+            var destination = GetUniqueDeletedProjectPath(deletedRoot, DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + safeFolderName);
+            Directory.Move(projectPath, destination);
+
+            if (_currentProject != null
+                && (string.Equals(_currentProject.Summary.Id, summary.Id, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Path.GetFullPath(_currentProject.Summary.ProjectPath), projectPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                _currentProject = null;
+                _currentSave = null;
+                pgProject.SelectedObject = null;
+                lstSaves.Items.Clear();
+            }
+
+            RefreshProjectList();
+            AppendLog("РџСЂРѕРµРєС‚ РїРµСЂРµРјРµС‰С‘РЅ РІ _deleted: " + destination);
+            await Task.CompletedTask;
+        }, AppWorkflowStatus.Idle);
+    }
+
     private async void btnSaveGame_Click(object? sender, EventArgs e)
     {
         await SaveCurrentProjectAsync();
@@ -169,18 +222,32 @@ public partial class MainForm : Form
 
     private async void btnDesignApplyAnswer_Click(object? sender, EventArgs e)
     {
-        if (lvDesignQuestions.SelectedItems.Count == 0 || lvDesignQuestions.SelectedItems[0].Tag is not GameDesignQuestion question)
+        var selectedQuestion = lvDesignQuestions.SelectedItems.Count == 0 ? null : lvDesignQuestions.SelectedItems[0].Tag as GameDesignQuestion;
+        var selectedSlot = lvDesignSlots.SelectedItems.Count == 0 ? null : lvDesignSlots.SelectedItems[0].Tag as GameDesignSlot;
+        var slotId = selectedQuestion?.SlotId ?? selectedSlot?.Id;
+        if (string.IsNullOrWhiteSpace(slotId))
         {
-            MessageBox.Show(this, "Выберите вопрос.", "Крафтер игры", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "Выберите вопрос или слот дизайна.", "Крафтер игры", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
+        }
+
+        var answer = txtDesignAnswer.Text;
+        if (string.IsNullOrWhiteSpace(answer))
+        {
+            var confirm = MessageBox.Show(this, "Ответ пустой. Очистить выбранный слот дизайна?", "Крафтер игры", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (confirm != DialogResult.Yes)
+            {
+                return;
+            }
         }
 
         await EnsureProjectThenRunAsync(async project =>
         {
-            _designInterviewService.SetUserAnswer(project.DesignProfile, question.SlotId, txtDesignAnswer.Text);
+            _designInterviewService.SetUserAnswer(project.DesignProfile, slotId, answer);
             RefreshDesignBrainView();
+            SelectDesignSlot(slotId);
             await _storageService.SaveProjectAsync(GetGamesRoot(), project, CurrentOperationToken);
-            AppendLog("Ответ сохранён в слот дизайна: " + question.SlotId);
+            AppendLog((selectedQuestion != null ? "Ответ сохранён в слот дизайна: " : "Слот дизайна обновлён: ") + slotId);
         }, AppWorkflowStatus.Idle);
     }
 
@@ -360,12 +427,50 @@ public partial class MainForm : Form
 
     private void lvDesignQuestions_SelectedIndexChanged(object? sender, EventArgs e)
     {
+        if (_loadingDesignSelection)
+        {
+            return;
+        }
+
         if (lvDesignQuestions.SelectedItems.Count == 0 || lvDesignQuestions.SelectedItems[0].Tag is not GameDesignQuestion question)
         {
             return;
         }
 
-        txtDesignAnswer.Text = string.Join(Environment.NewLine, question.SuggestedOptions);
+        _loadingDesignSelection = true;
+        try
+        {
+            lvDesignSlots.SelectedItems.Clear();
+            txtDesignAnswer.Text = string.Join(Environment.NewLine, question.SuggestedOptions);
+        }
+        finally
+        {
+            _loadingDesignSelection = false;
+        }
+    }
+
+    private void lvDesignSlots_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_loadingDesignSelection)
+        {
+            return;
+        }
+
+        if (lvDesignSlots.SelectedItems.Count == 0 || lvDesignSlots.SelectedItems[0].Tag is not GameDesignSlot slot)
+        {
+            return;
+        }
+
+        _loadingDesignSelection = true;
+        try
+        {
+            lvDesignQuestions.SelectedItems.Clear();
+            txtDesignAnswer.Text = slot.Value;
+        }
+        finally
+        {
+            _loadingDesignSelection = false;
+        }
     }
 
     private async void btnSaveGameAs_Click(object? sender, EventArgs e)
@@ -1321,6 +1426,25 @@ public partial class MainForm : Form
         txtDesignPreview.Text = BuildDesignPreview(_currentProject);
     }
 
+    private void SelectDesignSlot(string slotId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId))
+        {
+            return;
+        }
+
+        foreach (ListViewItem item in lvDesignSlots.Items)
+        {
+            if (item.Tag is GameDesignSlot slot && string.Equals(slot.Id, slotId, StringComparison.OrdinalIgnoreCase))
+            {
+                item.Selected = true;
+                item.Focused = true;
+                item.EnsureVisible();
+                break;
+            }
+        }
+    }
+
     private string BuildDesignPreview(GameProjectData project)
     {
         var builder = new StringBuilder();
@@ -1837,7 +1961,11 @@ public partial class MainForm : Form
 
     private void LogLmProfileUse(LmStudioModelProfile profile, string purpose)
     {
-        AppendLog($"LM Studio профиль: {profile.Name}; роль={profile.Role}; purpose={purpose}; endpoint={profile.Settings.Endpoint}; model={profile.Settings.ModelId}; context={profile.Generation.MaxInputContextTokens}.");
+        var activeProfile = _lmProfileService.GetActiveProfile(_appSettings);
+        var route = _appSettings.AutoSelectLmStudioProfile && !string.Equals(profile.Id, activeProfile.Id, StringComparison.OrdinalIgnoreCase)
+            ? "auto-select"
+            : "active";
+        AppendLog($"LM Studio профиль: {profile.Name}; роль={profile.Role}; purpose={purpose}; route={route}; active={activeProfile.Name}; endpoint={profile.Settings.Endpoint}; model={profile.Settings.ModelId}; context={profile.Generation.MaxInputContextTokens}; output={profile.Generation.MaxOutputTokens}.");
     }
 
     private FooocusSettings GetFooocusSettings()
@@ -1928,6 +2056,43 @@ public partial class MainForm : Form
         }
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static bool IsPathUnderDirectory(string path, string directory)
+    {
+        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fullDirectory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return fullPath.Equals(fullDirectory, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(fullDirectory + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string MakeSafeDeletedFolderName(string folderName)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = (folderName ?? string.Empty)
+            .Select(ch => invalid.Contains(ch) ? '_' : ch)
+            .ToArray();
+        var safe = new string(chars).Trim();
+        return string.IsNullOrWhiteSpace(safe) ? "project" : safe;
+    }
+
+    private static string GetUniqueDeletedProjectPath(string deletedRoot, string folderName)
+    {
+        var destination = Path.Combine(deletedRoot, folderName);
+        if (!Directory.Exists(destination))
+        {
+            return destination;
+        }
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = Path.Combine(deletedRoot, folderName + "_" + suffix);
+            if (!Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -2199,6 +2364,7 @@ public partial class MainForm : Form
         btnTestLm.Enabled = !busy;
         btnResaveSplitJson.Enabled = !busy;
         btnValidateProject.Enabled = !busy;
+        btnDeleteProject.Enabled = !busy;
         btnStopOperation.Enabled = busy;
         btnSaveSettings.Enabled = !busy;
         cmbLmProfiles.Enabled = !busy;

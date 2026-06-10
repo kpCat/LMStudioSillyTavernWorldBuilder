@@ -102,6 +102,20 @@ public sealed class GameDesignBrainTests
     }
 
     [Fact]
+    public void UserAnswer_CanUpdateAlreadyFilledSlot()
+    {
+        var profile = new GameDesignProfile();
+        var service = new GameDesignInterviewService();
+
+        service.SetUserAnswer(profile, "genre", "мистический детектив");
+        service.SetUserAnswer(profile, "genre", "научная фантастика");
+
+        var genre = profile.Slots.Single(x => x.Id == "genre");
+        Assert.Equal("научная фантастика", genre.Value);
+        Assert.Equal(GameDesignSlotValueSource.User, genre.Source);
+    }
+
+    [Fact]
     public void LlmAssumptionJson_FillsKnownEmptySlotsAndIgnoresUnknown()
     {
         var profile = new GameDesignProfile();

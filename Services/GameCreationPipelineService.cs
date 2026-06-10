@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Providers;
@@ -25,7 +26,8 @@ internal sealed class GameCreationPipelineService
     private readonly LmStudioCallDiagnosticsService _lmCallDiagnosticsService = new();
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = false
     };
 
     public GenerationUiSettings GenerationSettingsUi { get; set; } = new();
@@ -430,8 +432,8 @@ internal sealed class GameCreationPipelineService
     private async Task<string> BuildContentBatchAsync(GameProjectData project, LmStudioSettings settings, PromptPreset preset, string stage, string userRules, int count, string category, Action<string> log, CancellationToken cancellationToken)
     {
         log("Generating content batch: " + stage);
-        var userContent = BuildBatchUserContent(project, userRules, count, category, stage);
-        LogContextBudget(log, stage, userContent);
+        var generationSettings = ApplyOutputTokenLimit(preset.Settings);
+        var userContent = BuildContentBatchUserContentWithinBudget(project, preset, generationSettings, userRules, count, category, stage, string.Empty, log);
         var text = await SendPresetAsync(project, settings, preset, new[]
         {
             new ChatMessage { Role = "system", Content = preset.SystemPrompt },
@@ -461,8 +463,14 @@ internal sealed class GameCreationPipelineService
     {
         var generationSettings = ApplyOutputTokenLimit(preset.Settings);
         var messageList = messages.ToList();
-        var estimatedInputTokens = _lmCallDiagnosticsService.EstimateTokens(string.Concat(messageList.Select(x => x.Content ?? string.Empty)), GetApproxCharsPerToken());
-        log?.Invoke($"LLM-вызов {stage}: старт, вход ~{estimatedInputTokens} токенов, лимит контекста {GetMaxInputContextTokens()}, max output {generationSettings.MaxTokens}.");
+        var contextTokens = GetMaxInputContextTokens();
+        var safePromptBudget = _promptBudgetService.CalculateSafePromptBudgetTokens(contextTokens, generationSettings.MaxTokens);
+        var estimatedInputTokens = EstimateFullPromptTokens(messageList);
+        log?.Invoke($"LLM-вызов {stage}: старт, профиль context={contextTokens}, safe prompt budget={safePromptBudget}, вход ~{estimatedInputTokens} токенов, max output {generationSettings.MaxTokens}.");
+        if (estimatedInputTokens > safePromptBudget)
+        {
+            throw new InvalidOperationException($"Запрос к LM Studio не отправлен: prompt слишком большой после сжатия. Оценка {estimatedInputTokens} токенов, безопасный бюджет {safePromptBudget}. Уменьшите контекст проекта или настройку входного контекста.");
+        }
 
         var stopwatch = Stopwatch.StartNew();
         try
@@ -572,10 +580,92 @@ internal sealed class GameCreationPipelineService
         }, _jsonOptions);
     }
 
-    private string BuildCompactProjectContext(GameProjectData project, string stage, int reservedChars = 0)
+    private string BuildContentBatchUserContentWithinBudget(
+        GameProjectData project,
+        PromptPreset preset,
+        GenerationSettings generationSettings,
+        string userRules,
+        int count,
+        string category,
+        string stage,
+        string proposedBatchRaw,
+        Action<string>? log)
     {
-        var reservedTokens = _promptBudgetService.EstimateTokens(new string('x', Math.Max(0, reservedChars)), GetApproxCharsPerToken());
-        var maxInputTokens = Math.Max(128, GetMaxInputContextTokens() - reservedTokens);
+        var contextTokens = GetMaxInputContextTokens();
+        var safePromptBudget = _promptBudgetService.CalculateSafePromptBudgetTokens(contextTokens, generationSettings.MaxTokens);
+        var attempts = new[]
+        {
+            safePromptBudget,
+            safePromptBudget * 3 / 4,
+            safePromptBudget / 2,
+            safePromptBudget / 4,
+            512
+        }.Select(x => Math.Max(128, x)).Distinct().ToList();
+
+        var bestUserContent = string.Empty;
+        var bestEstimatedTokens = int.MaxValue;
+        foreach (var contextBudget in attempts)
+        {
+            var userContent = BuildBatchUserContent(project, userRules, count, category, stage, proposedBatchRaw, contextBudget);
+            var messageList = new[]
+            {
+                new ChatMessage { Role = "system", Content = preset.SystemPrompt },
+                new ChatMessage { Role = "user", Content = userContent }
+            };
+            var estimatedTokens = EstimateFullPromptTokens(messageList);
+            var hardTrimmed = userContent.Contains("\"hardTrimmed\": true", StringComparison.OrdinalIgnoreCase);
+            var trimmed = hardTrimmed || userContent.Contains("\"trimmed\": true", StringComparison.OrdinalIgnoreCase);
+            log?.Invoke($"Prompt budget {stage}: context={contextTokens}, safe={safePromptBudget}, full prompt ~{estimatedTokens}, output={generationSettings.MaxTokens}, context budget={contextBudget}, trimmed={trimmed}, hardTrimmed={hardTrimmed}.");
+
+            if (estimatedTokens < bestEstimatedTokens)
+            {
+                bestEstimatedTokens = estimatedTokens;
+                bestUserContent = userContent;
+            }
+
+            if (estimatedTokens <= safePromptBudget)
+            {
+                return userContent;
+            }
+        }
+
+        throw new InvalidOperationException($"Prompt too large after compaction: estimated {bestEstimatedTokens} tokens, safe prompt budget {safePromptBudget}. Reduce project context or input context settings.");
+    }
+
+    internal string BuildContentBatchUserContentWithinBudgetForTests(GameProjectData project, PromptPreset preset, string userRules, int count, string category, string stage, string proposedBatchRaw = "")
+    {
+        var generationSettings = ApplyOutputTokenLimit(preset.Settings);
+        return BuildContentBatchUserContentWithinBudget(project, preset, generationSettings, userRules, count, category, stage, proposedBatchRaw, null);
+    }
+
+    internal int EstimateFullPromptTokensForTests(IEnumerable<ChatMessage> messages)
+    {
+        return EstimateFullPromptTokens(messages);
+    }
+
+    internal int CalculateSafePromptBudgetTokensForTests(int maxOutputTokens)
+    {
+        return _promptBudgetService.CalculateSafePromptBudgetTokens(GetMaxInputContextTokens(), maxOutputTokens);
+    }
+
+    private string BuildBatchUserContent(GameProjectData project, string userRules, int count, string category, string stage, string proposedBatchRaw = "", int? maxContextTokensOverride = null)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            Rules = userRules,
+            Count = count,
+            Category = category,
+            Stage = stage,
+            ProjectContext = JsonSerializer.Deserialize<object>(BuildCompactProjectContext(project, stage, userRules.Length + proposedBatchRaw.Length, maxContextTokensOverride)),
+            ProposedBatchRaw = proposedBatchRaw
+        }, _jsonOptions);
+    }
+
+    private string BuildCompactProjectContext(GameProjectData project, string stage, int reservedChars = 0, int? maxContextTokensOverride = null)
+    {
+        var reservedTokens = _promptBudgetService.EstimateTokensConservative(new string('x', Math.Max(0, reservedChars)), GetApproxCharsPerToken());
+        var sourceBudget = maxContextTokensOverride.HasValue ? Math.Min(GetMaxInputContextTokens(), maxContextTokensOverride.Value) : GetMaxInputContextTokens();
+        var maxInputTokens = Math.Max(128, sourceBudget - reservedTokens);
         return _promptBudgetService.SerializeWithinBudget(limit => BuildCompactProjectContextModel(project, stage, limit), maxInputTokens, GetApproxCharsPerToken(), _jsonOptions);
     }
 
@@ -1223,7 +1313,7 @@ internal sealed class GameCreationPipelineService
 
     private void LogContextBudget(Action<string> log, string stage, string context)
     {
-        var estimatedTokens = _promptBudgetService.EstimateTokens(context, GetApproxCharsPerToken());
+        var estimatedTokens = _promptBudgetService.EstimateTokensConservative(context, GetApproxCharsPerToken());
         log($"Контекст {stage}: примерно {estimatedTokens} токенов из лимита {GetMaxInputContextTokens()}.");
         if (estimatedTokens > GetMaxInputContextTokens())
         {
@@ -1234,6 +1324,11 @@ internal sealed class GameCreationPipelineService
     private int GetMaxInputContextTokens()
     {
         return GenerationSettingsUi.MaxInputContextTokens > 0 ? GenerationSettingsUi.MaxInputContextTokens : 32768;
+    }
+
+    private int EstimateFullPromptTokens(IEnumerable<ChatMessage> messages)
+    {
+        return _promptBudgetService.EstimateMessagesConservative(messages, GetApproxCharsPerToken());
     }
 
     private int GetApproxCharsPerToken()

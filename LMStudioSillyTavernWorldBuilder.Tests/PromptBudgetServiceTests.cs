@@ -1,11 +1,137 @@
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Services;
 using LMStudioSillyTavernWorldBuilder.Storage;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace LMStudioSillyTavernWorldBuilder.Tests;
 
 public sealed class PromptBudgetServiceTests
 {
+    [Fact]
+    public void ConservativeEstimator_CountsCyrillicMoreStrictly()
+    {
+        var service = new PromptBudgetService();
+        var text = string.Concat(Enumerable.Repeat("жанр мистика город снег ", 40));
+
+        var oldEstimate = service.EstimateTokens(text, 4);
+        var conservativeEstimate = service.EstimateTokensConservative(text, 4);
+
+        Assert.True(conservativeEstimate > oldEstimate, $"Expected conservative={conservativeEstimate} to exceed old={oldEstimate}.");
+    }
+
+    [Fact]
+    public void BatchPrompt_PreflightRejectsOversizedFullPromptBeforeLmCall()
+    {
+        var project = TestProjects.CreateAdvancedProject();
+        var pipeline = new GameCreationPipelineService(new LmStudioService(new HttpClient()), new GameStorageService())
+        {
+            GenerationSettingsUi = new GenerationUiSettings
+            {
+                MaxInputContextTokens = 2048,
+                MaxOutputTokens = 1024,
+                MaxTokens = 1024,
+                ApproxCharsPerToken = 4
+            }
+        };
+        var hugeRules = string.Concat(Enumerable.Repeat("Русские правила генерации должны остаться в полном prompt. ", 600));
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            pipeline.BuildContentBatchUserContentWithinBudgetForTests(project, Prompts.GenerateStatsAndResourcesBatch, hugeRules, 3, "stats_resources", "stats-resources"));
+
+        Assert.Contains("Prompt too large after compaction", ex.Message);
+    }
+
+    [Fact]
+    public void BatchPrompt_UsesConfiguredProfileContextBudget()
+    {
+        var project = TestProjects.CreateAdvancedProject();
+        var pipeline = new GameCreationPipelineService(new LmStudioService(new HttpClient()), new GameStorageService())
+        {
+            GenerationSettingsUi = new GenerationUiSettings
+            {
+                MaxInputContextTokens = 12000,
+                MaxOutputTokens = 4096,
+                MaxTokens = 4096,
+                ApproxCharsPerToken = 4
+            }
+        };
+
+        var userContent = pipeline.BuildContentBatchUserContentWithinBudgetForTests(project, Prompts.GenerateStatsAndResourcesBatch, string.Empty, 3, "stats_resources", "stats-resources");
+        var estimated = pipeline.EstimateFullPromptTokensForTests(new[]
+        {
+            new ChatMessage { Role = "system", Content = Prompts.GenerateStatsAndResourcesBatch.SystemPrompt },
+            new ChatMessage { Role = "user", Content = userContent }
+        });
+        var safeBudget = pipeline.CalculateSafePromptBudgetTokensForTests(Prompts.GenerateStatsAndResourcesBatch.Settings.MaxTokens);
+
+        Assert.Contains("\"maxInputContextTokens\":12000", userContent);
+        Assert.True(estimated <= safeBudget, $"Estimated prompt was {estimated}, safe budget was {safeBudget}.");
+    }
+
+    [Fact]
+    public void BatchPrompt_DoesNotUnicodeEscapeRussianPromptContent()
+    {
+        var project = TestProjects.CreateAdvancedProject();
+        project.Meta.Title = "РЎРІРµС‚РѕРіСЂР°Рґ";
+        project.Meta.Description = "РќРѕСЃРёС‚РµР»СЊ РёСЃРєСЂС‹ РёС‰РµС‚ РњРµС‚Р°РјРѕРґСѓР»СЊ.";
+        project.Brief.Text = "РњРµС‚Р°РјРѕРґСѓР»СЊ РґРµСЂР¶РёС‚ РіРѕСЂРѕРґ РІ СЂР°РІРЅРѕРІРµСЃРёРё.";
+        project.Concept.Text = "РЎРІРµС‚РѕРіСЂР°Рґ Р¶РёРІС‘С‚ РЅР° СЌРЅРµСЂРіРёРё РЅРѕСЃРёС‚РµР»РµР№.";
+        project.MvpPlan.Text = "РЎРѕР±СЂР°С‚СЊ СЂРµСЃСѓСЂСЃС‹ Рё РЅР°Р№С‚Рё РёСЃС‚РѕС‡РЅРёРє.";
+        project.DesignProfile.InitialIdea = "РќРѕСЃРёС‚РµР»СЊ РїСѓС‚РµС€РµСЃС‚РІСѓРµС‚ РїРѕ РЎРІРµС‚РѕРіСЂР°РґСѓ.";
+        project.GenerationPreferences.GeneralGameplayText = "РџРёСЃР°С‚СЊ РЅР° СЂСѓСЃСЃРєРѕРј, Р±РµР· Р»Р°С‚РёРЅРёР·Р°С†РёРё.";
+        var pipeline = new GameCreationPipelineService(new LmStudioService(new HttpClient()), new GameStorageService())
+        {
+            GenerationSettingsUi = new GenerationUiSettings
+            {
+                MaxInputContextTokens = 12000,
+                MaxOutputTokens = 4096,
+                MaxTokens = 4096,
+                ApproxCharsPerToken = 4
+            }
+        };
+
+        var userContent = pipeline.BuildContentBatchUserContentWithinBudgetForTests(project, Prompts.GenerateStatsAndResourcesBatch, string.Empty, 3, "stats_resources", "stats-resources");
+        var estimated = pipeline.EstimateFullPromptTokensForTests(new[]
+        {
+            new ChatMessage { Role = "system", Content = Prompts.GenerateStatsAndResourcesBatch.SystemPrompt },
+            new ChatMessage { Role = "user", Content = userContent }
+        });
+        var safeBudget = pipeline.CalculateSafePromptBudgetTokensForTests(Prompts.GenerateStatsAndResourcesBatch.Settings.MaxTokens);
+
+        Assert.Contains("РќРѕСЃРёС‚РµР»СЊ", userContent);
+        Assert.Contains("РњРµС‚Р°РјРѕРґСѓР»СЊ", userContent);
+        Assert.DoesNotContain("\\u041", userContent);
+        Assert.DoesNotContain("\\u043", userContent);
+        Assert.DoesNotContain("\\u04", userContent);
+        Assert.True(estimated <= safeBudget, $"Estimated prompt was {estimated}, safe budget was {safeBudget}.");
+    }
+
+    [Fact]
+    public void SerializeWithinBudget_UsesConservativeEstimatorForRussianText()
+    {
+        var service = new PromptBudgetService();
+        var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        };
+
+        var text = service.SerializeWithinBudget(limit => new
+        {
+            Items = Enumerable.Range(0, limit).Select(i => new
+            {
+                Id = "item_" + i,
+                Text = string.Concat(Enumerable.Repeat("РќРѕСЃРёС‚РµР»СЊ РњРµС‚Р°РјРѕРґСѓР»СЊ РЎРІРµС‚РѕРіСЂР°Рґ ", 6))
+            })
+        }, 220, 4, jsonOptions);
+        var estimate = service.EstimateTokensConservative(text, 4);
+
+        Assert.True(estimate <= 220, $"Estimated prompt was {estimate}.");
+        Assert.Contains("РќРѕСЃРёС‚РµР»СЊ", text);
+        Assert.DoesNotContain("item_2", text);
+    }
+
     [Fact]
     public void CompactContext_StaysNearConfiguredBudget()
     {
@@ -85,7 +211,7 @@ public sealed class PromptBudgetServiceTests
         var estimated = new PromptBudgetService().EstimateTokens(context, 4);
 
         Assert.True(estimated < 2500, $"Estimated compact context was still too large: {estimated} tokens.");
-        Assert.Contains("\"hardTrimmed\": true", context);
+        Assert.Contains("\"hardTrimmed\":true", context);
         Assert.DoesNotContain(new string('b', 1000), context);
     }
 }
