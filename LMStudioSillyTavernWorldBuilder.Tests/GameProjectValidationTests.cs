@@ -424,6 +424,67 @@ public sealed class GameProjectValidationTests
     }
 
     [Fact]
+    public void GeneratedScenesJsonNormalizer_ConvertsAmbiguousWorldStateEffectToLog()
+    {
+        var raw = """
+        {
+          "worldState": {
+            "enabled": true,
+            "aspects": [
+              {
+                "id": "aspect_border_instability",
+                "name": "Border instability",
+                "defaultStateId": "stable",
+                "states": [
+                  { "id": "stable", "name": "Stable" },
+                  { "id": "unstable", "name": "Unstable" }
+                ]
+              }
+            ]
+          },
+          "scenes": [
+            {
+              "id": "scene_border_revelation",
+              "title": "Border revelation",
+              "locationId": "location_green_border_edge",
+              "text": "The border bends.",
+              "choices": [
+                {
+                  "id": "choice_stabilize_border",
+                  "text": "Stabilize",
+                  "effects": [
+                    { "type": "worldState", "targetId": "aspect_border_stability", "amount": 0, "text": "You try to stabilize the border." },
+                    { "type": "variable", "targetId": "metamodule_sync", "amount": 5 }
+                  ],
+                  "nextSceneId": "scene_end_demo"
+                }
+              ]
+            },
+            {
+              "id": "scene_end_demo",
+              "title": "End",
+              "locationId": "location_start",
+              "text": "End."
+            }
+          ]
+        }
+        """;
+        var warnings = new List<string>();
+
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests(raw, warnings);
+        var project = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var result = new GameProjectValidator().Validate(project!);
+
+        Assert.NotNull(project);
+        var effect = project!.Scenes[0].Choices[0].Effects[0];
+        Assert.Equal("log", effect.Type);
+        Assert.Equal(string.Empty, effect.TargetId);
+        Assert.Equal("You try to stabilize the border.", effect.Text);
+        Assert.DoesNotContain(result.Errors, x => x.Contains("aspect_border_stability", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, x => x.Contains("ambiguous", StringComparison.OrdinalIgnoreCase) && x.Contains("converted to log", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void CloneService_PreservesIdentityOnCopyMutableData()
     {
         var target = TestProjects.CreatePlayableProject();

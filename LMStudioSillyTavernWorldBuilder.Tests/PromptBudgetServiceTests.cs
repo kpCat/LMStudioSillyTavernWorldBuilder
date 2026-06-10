@@ -146,6 +146,9 @@ public sealed class PromptBudgetServiceTests
         Assert.Contains("scene_border_checkpoint_return", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("conditions", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("effects", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Текст эффекта не является state id", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("aspect_border_stability", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(""type": "log"", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

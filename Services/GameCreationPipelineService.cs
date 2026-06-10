@@ -1289,8 +1289,49 @@ internal sealed class GameCreationPipelineService
 
             NormalizeConditionArray(choice["conditions"] as JsonArray, $"$.scenes[*].choices[{choiceIndex}].conditions", warnings, log);
             NormalizeAmountArray(choice["effects"] as JsonArray, $"$.scenes[*].choices[{choiceIndex}].effects", warnings, log);
+            NormalizeAmbiguousSceneWorldStateEffects(choice["effects"] as JsonArray, $"$.scenes[*].choices[{choiceIndex}].effects", warnings, log);
             NormalizeSceneChoiceCosts(choice, choiceIndex, warnings, log);
+            NormalizeAmbiguousSceneWorldStateEffects(choice["effects"] as JsonArray, $"$.scenes[*].choices[{choiceIndex}].effects", warnings, log);
             NormalizeSceneChoiceNextScene(choice, generatedSceneIds, syntheticScenes, warnings, log);
+        }
+    }
+
+    private static void NormalizeAmbiguousSceneWorldStateEffects(JsonArray? effects, string path, List<string> warnings, Action<string>? log)
+    {
+        if (effects == null)
+        {
+            return;
+        }
+
+        for (var effectIndex = 0; effectIndex < effects.Count; effectIndex++)
+        {
+            if (effects[effectIndex] is not JsonObject effect || !IsWorldAspectType(GetJsonString(effect, "type")))
+            {
+                continue;
+            }
+
+            var hasExplicitState = !string.IsNullOrWhiteSpace(GetJsonString(effect, "stringValue"))
+                || effect["parameters"] is JsonObject parameters && !string.IsNullOrWhiteSpace(GetJsonString(parameters, "stateId"));
+            if (hasExplicitState)
+            {
+                continue;
+            }
+
+            var originalType = GetJsonString(effect, "type");
+            var originalTargetId = GetJsonString(effect, "targetId");
+            var originalText = GetJsonString(effect, "text");
+            effect["type"] = "log";
+            effect["targetId"] = string.Empty;
+            effect["amount"] = 0;
+            effect["stringValue"] = string.Empty;
+            effect["formulaId"] = string.Empty;
+            effect["formulaExpression"] = string.Empty;
+            if (string.IsNullOrWhiteSpace(originalText))
+            {
+                effect["text"] = "Состояние мира не изменено: draft не указал целевое состояние.";
+            }
+
+            AddNormalizationWarning(warnings, log, $"{path}[{effectIndex}]: ambiguous {originalType} effect for '{originalTargetId}' had no stringValue/stateId and was converted to log.");
         }
     }
 

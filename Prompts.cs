@@ -1028,6 +1028,11 @@ GameChoice поддерживает только conditions и effects. Не и�
 Choice.nextSceneId должен ссылаться только на scene id, а не на location id.
 BAD: "nextSceneId": "location_border_checkpoint"
 GOOD: "nextSceneId": "scene_border_checkpoint_return" плюс отдельная сцена { "id": "scene_border_checkpoint_return", "locationId": "location_border_checkpoint", "text": "..." }.
+Для scenes предпочитай безопасные effects: stat, variable, currency, item, log, quest, progression/unlockProgression.
+Не используй worldState/worldAspect effects в сценах без явного stringValue. Текст эффекта не является state id.
+Если всё-таки меняешь WorldState из сцены: targetId должен быть существующим aspect id из context, stringValue должен быть существующим state id, text должен быть только описанием.
+BAD: { "type": "worldState", "targetId": "aspect_border_stability", "amount": 0, "text": "Вы стабилизируете границу" }
+GOOD: { "type": "log", "targetId": "", "amount": 0, "text": "Вы стабилизируете границу" }
 Choices должны вести в существующие или сгенерированные сцены. Не делай бессмысленных тупиков; финальные сцены без choices допустимы.
 """, new GenerationSettings(0.50, 0.90, 0.05, 40, 1.05, 0.00, 5000));
 
