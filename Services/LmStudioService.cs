@@ -17,6 +17,7 @@ internal sealed class LmStudioService
     public LmStudioService(HttpClient httpClient)
     {
         _httpClient = httpClient;
+        _httpClient.Timeout = Timeout.InfiniteTimeSpan;
     }
 
     public async Task<string> SendAsync(
@@ -25,7 +26,7 @@ internal sealed class LmStudioService
         GenerationSettings generationSettings,
         CancellationToken cancellationToken = default)
     {
-        _httpClient.Timeout = lmSettings.RequestTimeoutSeconds <= 0
+        var requestTimeout = lmSettings.RequestTimeoutSeconds <= 0
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromSeconds(Math.Max(10, lmSettings.RequestTimeoutSeconds));
 
@@ -52,12 +53,34 @@ internal sealed class LmStudioService
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", lmSettings.ApiKey.Trim());
         }
 
-        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        using var timeoutCts = requestTimeout == Timeout.InfiniteTimeSpan
+            ? null
+            : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (timeoutCts != null)
         {
-            throw new InvalidOperationException($"LM Studio returned HTTP {(int)response.StatusCode}: {responseText}");
+            timeoutCts.CancelAfter(requestTimeout);
+        }
+
+        var effectiveToken = timeoutCts?.Token ?? cancellationToken;
+        string responseText;
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(httpRequest, effectiveToken);
+            responseText = await response.Content.ReadAsStringAsync(effectiveToken);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested && requestTimeout != Timeout.InfiniteTimeSpan)
+        {
+            throw new TimeoutException($"LM Studio request timed out after {(int)requestTimeout.TotalSeconds} seconds.", ex);
+        }
+
+        using (response)
+        {
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"LM Studio returned HTTP {(int)response.StatusCode}: {responseText}");
+            }
         }
 
         var parsed = JsonSerializer.Deserialize<ChatCompletionResponse>(responseText, _jsonOptions);

@@ -26,6 +26,24 @@ public sealed class LmStudioServiceTests
         Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
     }
 
+    [Fact]
+    public async Task LmStudioService_CanSendMultipleRequestsWithDifferentTimeoutSettings()
+    {
+        var handler = new StubHandler();
+        using var client = new HttpClient(handler);
+        var service = new LmStudioService(client);
+
+        var generation = new GenerationSettings(0, 1, 0, 1, 1, 0, 1);
+        var messages = new[] { new ApiMessage("user", "hello") };
+
+        var first = await service.SendAsync(new LmStudioSettings { RequestTimeoutSeconds = 0, ModelId = "test" }, messages, generation);
+        var second = await service.SendAsync(new LmStudioSettings { RequestTimeoutSeconds = 30, ModelId = "test" }, messages, generation);
+
+        Assert.Equal("ok", first);
+        Assert.Equal("ok", second);
+        Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

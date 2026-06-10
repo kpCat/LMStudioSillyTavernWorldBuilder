@@ -327,6 +327,14 @@ partial class MainForm
         txtGameCrafterIdea = new TextBox();
         lblGameCreationMode = new Label();
         cmbGameCreationMode = new ComboBox();
+        lblChangeRequest = new Label();
+        txtChangeRequest = new TextBox();
+        btnChangeRequestAnalyze = new Button();
+        btnChangeRequestGenerate = new Button();
+        lblDesignConversation = new Label();
+        txtDesignConversation = new TextBox();
+        lblDesignConversationFocus = new Label();
+        txtDesignConversationFocus = new TextBox();
         gameCrafterButtons = new FlowLayoutPanel();
         btnDesignApplyIdea = new Button();
         btnDesignRefreshQuestions = new Button();
@@ -343,14 +351,6 @@ partial class MainForm
         btnBalanceGenerateDraft = new Button();
         btnMvpCheck = new Button();
         btnMvpGenerateNextDraft = new Button();
-        lblChangeRequest = new Label();
-        txtChangeRequest = new TextBox();
-        btnChangeRequestAnalyze = new Button();
-        btnChangeRequestGenerate = new Button();
-        lblDesignConversation = new Label();
-        txtDesignConversation = new TextBox();
-        lblDesignConversationFocus = new Label();
-        txtDesignConversationFocus = new TextBox();
         btnDesignConversationSend = new Button();
         gameCrafterSplit = new SplitContainer();
         gameCrafterLeftLayout = new TableLayoutPanel();
@@ -420,17 +420,12 @@ partial class MainForm
         lvPrompts = new ListView();
         txtPromptDetails = new TextBox();
         assetsBottomLayout = new TableLayoutPanel();
-        assetsPromptButtons = new FlowLayoutPanel();
         assetsBatchOptions = new FlowLayoutPanel();
-        assetsBatchButtons = new FlowLayoutPanel();
         lblBatchCount = new Label();
         nudBatchCount = new NumericUpDown();
         lblBatchCategory = new Label();
         cmbBatchCategory = new ComboBox();
-        lblBatchRules = new Label();
-        txtBatchRules = new TextBox();
-        assetsButtons = new FlowLayoutPanel();
-        btnBuildImagePrompts = new Button();
+        assetsBatchButtons = new FlowLayoutPanel();
         btnGenerateStatsResourcesBatch = new Button();
         btnGenerateItemsBatch = new Button();
         btnGenerateEquipmentBatch = new Button();
@@ -439,6 +434,10 @@ partial class MainForm
         btnGenerateLocationsBatch = new Button();
         btnGenerateScenesBatch = new Button();
         btnGenerateEncountersBatch = new Button();
+        lblBatchRules = new Label();
+        txtBatchRules = new TextBox();
+        assetsButtons = new FlowLayoutPanel();
+        btnBuildImagePrompts = new Button();
         btnApprovePrompt = new Button();
         btnRunFooocusQueue = new Button();
         btnImportAssets = new Button();
@@ -526,6 +525,7 @@ partial class MainForm
         nudFooocusShutdown = new NumericUpDown();
         lblSettings = new Label();
         btnSaveSettings = new Button();
+        assetsPromptButtons = new FlowLayoutPanel();
         lblValidationResult = new Label();
         rootLayout.SuspendLayout();
         topLayout.SuspendLayout();
@@ -572,10 +572,9 @@ partial class MainForm
         tabAssets.SuspendLayout();
         assetsLayout.SuspendLayout();
         assetsBottomLayout.SuspendLayout();
-        assetsPromptButtons.SuspendLayout();
         assetsBatchOptions.SuspendLayout();
-        assetsBatchButtons.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudBatchCount).BeginInit();
+        assetsBatchButtons.SuspendLayout();
         assetsButtons.SuspendLayout();
         tabPlay.SuspendLayout();
         playLayout.SuspendLayout();
@@ -1093,14 +1092,6 @@ partial class MainForm
         gameCrafterTopLayout.Controls.Add(txtGameCrafterIdea, 1, 0);
         gameCrafterTopLayout.Controls.Add(lblGameCreationMode, 2, 0);
         gameCrafterTopLayout.Controls.Add(cmbGameCreationMode, 3, 0);
-        gameCrafterTopLayout.Dock = DockStyle.Fill;
-        gameCrafterTopLayout.Location = new Point(3, 3);
-        gameCrafterTopLayout.Name = "gameCrafterTopLayout";
-        gameCrafterTopLayout.Padding = new Padding(8);
-        gameCrafterTopLayout.RowCount = 3;
-        gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 98F));
-        gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 86F));
-        gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         gameCrafterTopLayout.Controls.Add(lblChangeRequest, 0, 1);
         gameCrafterTopLayout.Controls.Add(txtChangeRequest, 1, 1);
         gameCrafterTopLayout.Controls.Add(btnChangeRequestAnalyze, 2, 1);
@@ -1109,6 +1100,14 @@ partial class MainForm
         gameCrafterTopLayout.Controls.Add(txtDesignConversation, 1, 2);
         gameCrafterTopLayout.Controls.Add(lblDesignConversationFocus, 2, 2);
         gameCrafterTopLayout.Controls.Add(txtDesignConversationFocus, 3, 2);
+        gameCrafterTopLayout.Dock = DockStyle.Fill;
+        gameCrafterTopLayout.Location = new Point(3, 3);
+        gameCrafterTopLayout.Name = "gameCrafterTopLayout";
+        gameCrafterTopLayout.Padding = new Padding(8);
+        gameCrafterTopLayout.RowCount = 3;
+        gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 98F));
+        gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 86F));
+        gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         gameCrafterTopLayout.Size = new Size(1260, 286);
         gameCrafterTopLayout.TabIndex = 0;
         // 
@@ -1117,7 +1116,7 @@ partial class MainForm
         lblGameCrafterIdea.Dock = DockStyle.Fill;
         lblGameCrafterIdea.Location = new Point(11, 8);
         lblGameCrafterIdea.Name = "lblGameCrafterIdea";
-        lblGameCrafterIdea.Size = new Size(114, 90);
+        lblGameCrafterIdea.Size = new Size(114, 98);
         lblGameCrafterIdea.TabIndex = 0;
         lblGameCrafterIdea.Text = "Идея игры:";
         lblGameCrafterIdea.TextAlign = ContentAlignment.MiddleLeft;
@@ -1130,15 +1129,15 @@ partial class MainForm
         txtGameCrafterIdea.Multiline = true;
         txtGameCrafterIdea.Name = "txtGameCrafterIdea";
         txtGameCrafterIdea.ScrollBars = ScrollBars.Vertical;
-        txtGameCrafterIdea.Size = new Size(769, 84);
+        txtGameCrafterIdea.Size = new Size(638, 92);
         txtGameCrafterIdea.TabIndex = 1;
         // 
         // lblGameCreationMode
         // 
         lblGameCreationMode.Dock = DockStyle.Fill;
-        lblGameCreationMode.Location = new Point(906, 8);
+        lblGameCreationMode.Location = new Point(775, 8);
         lblGameCreationMode.Name = "lblGameCreationMode";
-        lblGameCreationMode.Size = new Size(214, 90);
+        lblGameCreationMode.Size = new Size(214, 98);
         lblGameCreationMode.TabIndex = 2;
         lblGameCreationMode.Text = "Режим:";
         lblGameCreationMode.TextAlign = ContentAlignment.MiddleLeft;
@@ -1148,9 +1147,9 @@ partial class MainForm
         cmbGameCreationMode.Dock = DockStyle.Top;
         cmbGameCreationMode.DropDownStyle = ComboBoxStyle.DropDownList;
         cmbGameCreationMode.FormattingEnabled = true;
-        cmbGameCreationMode.Location = new Point(1126, 11);
+        cmbGameCreationMode.Location = new Point(995, 11);
         cmbGameCreationMode.Name = "cmbGameCreationMode";
-        cmbGameCreationMode.Size = new Size(253, 23);
+        cmbGameCreationMode.Size = new Size(254, 23);
         cmbGameCreationMode.TabIndex = 3;
         // 
         // lblChangeRequest
@@ -1158,7 +1157,7 @@ partial class MainForm
         lblChangeRequest.Dock = DockStyle.Fill;
         lblChangeRequest.Location = new Point(11, 106);
         lblChangeRequest.Name = "lblChangeRequest";
-        lblChangeRequest.Size = new Size(114, 84);
+        lblChangeRequest.Size = new Size(114, 86);
         lblChangeRequest.TabIndex = 4;
         lblChangeRequest.Text = "Запрос на изменение игры:";
         lblChangeRequest.TextAlign = ContentAlignment.MiddleLeft;
@@ -1171,13 +1170,13 @@ partial class MainForm
         txtChangeRequest.Multiline = true;
         txtChangeRequest.Name = "txtChangeRequest";
         txtChangeRequest.ScrollBars = ScrollBars.Vertical;
-        txtChangeRequest.Size = new Size(769, 78);
+        txtChangeRequest.Size = new Size(638, 80);
         txtChangeRequest.TabIndex = 5;
         // 
         // btnChangeRequestAnalyze
         // 
         btnChangeRequestAnalyze.Dock = DockStyle.Top;
-        btnChangeRequestAnalyze.Location = new Point(906, 109);
+        btnChangeRequestAnalyze.Location = new Point(775, 109);
         btnChangeRequestAnalyze.Name = "btnChangeRequestAnalyze";
         btnChangeRequestAnalyze.Size = new Size(214, 32);
         btnChangeRequestAnalyze.TabIndex = 6;
@@ -1187,9 +1186,9 @@ partial class MainForm
         // btnChangeRequestGenerate
         // 
         btnChangeRequestGenerate.Dock = DockStyle.Top;
-        btnChangeRequestGenerate.Location = new Point(1126, 109);
+        btnChangeRequestGenerate.Location = new Point(995, 109);
         btnChangeRequestGenerate.Name = "btnChangeRequestGenerate";
-        btnChangeRequestGenerate.Size = new Size(253, 32);
+        btnChangeRequestGenerate.Size = new Size(254, 32);
         btnChangeRequestGenerate.TabIndex = 7;
         btnChangeRequestGenerate.Text = "Сгенерировать draft правки";
         btnChangeRequestGenerate.Click += btnChangeRequestGenerate_Click;
@@ -1212,13 +1211,13 @@ partial class MainForm
         txtDesignConversation.Multiline = true;
         txtDesignConversation.Name = "txtDesignConversation";
         txtDesignConversation.ScrollBars = ScrollBars.Vertical;
-        txtDesignConversation.Size = new Size(769, 80);
+        txtDesignConversation.Size = new Size(638, 80);
         txtDesignConversation.TabIndex = 9;
         // 
         // lblDesignConversationFocus
         // 
         lblDesignConversationFocus.Dock = DockStyle.Fill;
-        lblDesignConversationFocus.Location = new Point(906, 192);
+        lblDesignConversationFocus.Location = new Point(775, 192);
         lblDesignConversationFocus.Name = "lblDesignConversationFocus";
         lblDesignConversationFocus.Size = new Size(214, 86);
         lblDesignConversationFocus.TabIndex = 10;
@@ -1228,9 +1227,9 @@ partial class MainForm
         // txtDesignConversationFocus
         // 
         txtDesignConversationFocus.Dock = DockStyle.Top;
-        txtDesignConversationFocus.Location = new Point(1126, 195);
+        txtDesignConversationFocus.Location = new Point(995, 195);
         txtDesignConversationFocus.Name = "txtDesignConversationFocus";
-        txtDesignConversationFocus.Size = new Size(253, 23);
+        txtDesignConversationFocus.Size = new Size(254, 23);
         txtDesignConversationFocus.TabIndex = 11;
         // 
         // gameCrafterButtons
@@ -1324,16 +1323,16 @@ partial class MainForm
         // lblRandomDirectorEventCount
         // 
         lblRandomDirectorEventCount.AutoSize = true;
-        lblRandomDirectorEventCount.Location = new Point(11, 39);
+        lblRandomDirectorEventCount.Location = new Point(11, 42);
         lblRandomDirectorEventCount.Margin = new Padding(3, 6, 3, 0);
         lblRandomDirectorEventCount.Name = "lblRandomDirectorEventCount";
-        lblRandomDirectorEventCount.Size = new Size(59, 15);
+        lblRandomDirectorEventCount.Size = new Size(60, 15);
         lblRandomDirectorEventCount.TabIndex = 7;
         lblRandomDirectorEventCount.Text = "Событий:";
         // 
         // txtRandomDirectorEventCount
         // 
-        txtRandomDirectorEventCount.Location = new Point(76, 36);
+        txtRandomDirectorEventCount.Location = new Point(77, 39);
         txtRandomDirectorEventCount.Name = "txtRandomDirectorEventCount";
         txtRandomDirectorEventCount.Size = new Size(48, 23);
         txtRandomDirectorEventCount.TabIndex = 8;
@@ -1342,7 +1341,7 @@ partial class MainForm
         // lblBalanceSimulationRuns
         // 
         lblBalanceSimulationRuns.AutoSize = true;
-        lblBalanceSimulationRuns.Location = new Point(140, 39);
+        lblBalanceSimulationRuns.Location = new Point(131, 42);
         lblBalanceSimulationRuns.Margin = new Padding(3, 6, 3, 0);
         lblBalanceSimulationRuns.Name = "lblBalanceSimulationRuns";
         lblBalanceSimulationRuns.Size = new Size(74, 15);
@@ -1351,7 +1350,7 @@ partial class MainForm
         // 
         // txtBalanceSimulationRuns
         // 
-        txtBalanceSimulationRuns.Location = new Point(220, 36);
+        txtBalanceSimulationRuns.Location = new Point(211, 39);
         txtBalanceSimulationRuns.Name = "txtBalanceSimulationRuns";
         txtBalanceSimulationRuns.Size = new Size(48, 23);
         txtBalanceSimulationRuns.TabIndex = 10;
@@ -1359,7 +1358,7 @@ partial class MainForm
         // 
         // btnBalanceCheck
         // 
-        btnBalanceCheck.Location = new Point(274, 36);
+        btnBalanceCheck.Location = new Point(265, 39);
         btnBalanceCheck.Name = "btnBalanceCheck";
         btnBalanceCheck.Size = new Size(135, 25);
         btnBalanceCheck.TabIndex = 11;
@@ -1368,7 +1367,7 @@ partial class MainForm
         // 
         // btnBalanceGenerateDraft
         // 
-        btnBalanceGenerateDraft.Location = new Point(415, 36);
+        btnBalanceGenerateDraft.Location = new Point(406, 39);
         btnBalanceGenerateDraft.Name = "btnBalanceGenerateDraft";
         btnBalanceGenerateDraft.Size = new Size(205, 25);
         btnBalanceGenerateDraft.TabIndex = 12;
@@ -1377,7 +1376,7 @@ partial class MainForm
         // 
         // btnMvpCheck
         // 
-        btnMvpCheck.Location = new Point(626, 36);
+        btnMvpCheck.Location = new Point(617, 39);
         btnMvpCheck.Name = "btnMvpCheck";
         btnMvpCheck.Size = new Size(120, 25);
         btnMvpCheck.TabIndex = 13;
@@ -1386,7 +1385,7 @@ partial class MainForm
         // 
         // btnMvpGenerateNextDraft
         // 
-        btnMvpGenerateNextDraft.Location = new Point(752, 36);
+        btnMvpGenerateNextDraft.Location = new Point(743, 39);
         btnMvpGenerateNextDraft.Name = "btnMvpGenerateNextDraft";
         btnMvpGenerateNextDraft.Size = new Size(250, 25);
         btnMvpGenerateNextDraft.TabIndex = 14;
@@ -1395,7 +1394,7 @@ partial class MainForm
         // 
         // btnDesignConversationSend
         // 
-        btnDesignConversationSend.Location = new Point(1008, 36);
+        btnDesignConversationSend.Location = new Point(999, 39);
         btnDesignConversationSend.Name = "btnDesignConversationSend";
         btnDesignConversationSend.Size = new Size(220, 25);
         btnDesignConversationSend.TabIndex = 15;
@@ -1435,7 +1434,7 @@ partial class MainForm
         gameCrafterLeftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 30F));
         gameCrafterLeftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88F));
         gameCrafterLeftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
-        gameCrafterLeftLayout.Size = new Size(720, 484);
+        gameCrafterLeftLayout.Size = new Size(720, 388);
         gameCrafterLeftLayout.TabIndex = 0;
         // 
         // lvDesignSlots
@@ -1446,7 +1445,7 @@ partial class MainForm
         lvDesignSlots.Location = new Point(3, 3);
         lvDesignSlots.MultiSelect = false;
         lvDesignSlots.Name = "lvDesignSlots";
-        lvDesignSlots.Size = new Size(714, 180);
+        lvDesignSlots.Size = new Size(714, 161);
         lvDesignSlots.TabIndex = 0;
         lvDesignSlots.UseCompatibleStateImageBehavior = false;
         lvDesignSlots.View = View.Details;
@@ -1456,10 +1455,10 @@ partial class MainForm
         lvDesignQuestions.Dock = DockStyle.Fill;
         lvDesignQuestions.FullRowSelect = true;
         lvDesignQuestions.GridLines = true;
-        lvDesignQuestions.Location = new Point(3, 206);
+        lvDesignQuestions.Location = new Point(3, 170);
         lvDesignQuestions.MultiSelect = false;
         lvDesignQuestions.Name = "lvDesignQuestions";
-        lvDesignQuestions.Size = new Size(714, 101);
+        lvDesignQuestions.Size = new Size(714, 90);
         lvDesignQuestions.TabIndex = 1;
         lvDesignQuestions.UseCompatibleStateImageBehavior = false;
         lvDesignQuestions.View = View.Details;
@@ -1469,7 +1468,7 @@ partial class MainForm
         // 
         txtDesignAnswer.Dock = DockStyle.Fill;
         txtDesignAnswer.Font = new Font("Consolas", 10F);
-        txtDesignAnswer.Location = new Point(3, 291);
+        txtDesignAnswer.Location = new Point(3, 266);
         txtDesignAnswer.Multiline = true;
         txtDesignAnswer.Name = "txtDesignAnswer";
         txtDesignAnswer.ScrollBars = ScrollBars.Vertical;
@@ -1479,9 +1478,9 @@ partial class MainForm
         // btnDesignApplyAnswer
         // 
         btnDesignApplyAnswer.Dock = DockStyle.Fill;
-        btnDesignApplyAnswer.Location = new Point(3, 379);
+        btnDesignApplyAnswer.Location = new Point(3, 354);
         btnDesignApplyAnswer.Name = "btnDesignApplyAnswer";
-        btnDesignApplyAnswer.Size = new Size(714, 30);
+        btnDesignApplyAnswer.Size = new Size(714, 31);
         btnDesignApplyAnswer.TabIndex = 3;
         btnDesignApplyAnswer.Text = "Применить ответ";
         btnDesignApplyAnswer.Click += btnDesignApplyAnswer_Click;
@@ -1495,7 +1494,7 @@ partial class MainForm
         txtDesignPreview.Name = "txtDesignPreview";
         txtDesignPreview.ReadOnly = true;
         txtDesignPreview.ScrollBars = ScrollBars.Both;
-        txtDesignPreview.Size = new Size(536, 484);
+        txtDesignPreview.Size = new Size(536, 388);
         txtDesignPreview.TabIndex = 0;
         // 
         // tabBrief
@@ -1893,7 +1892,7 @@ partial class MainForm
         lblPipelineRules.Dock = DockStyle.Fill;
         lblPipelineRules.Location = new Point(3, 68);
         lblPipelineRules.Name = "lblPipelineRules";
-        lblPipelineRules.Size = new Size(124, 122);
+        lblPipelineRules.Size = new Size(124, 92);
         lblPipelineRules.TabIndex = 4;
         lblPipelineRules.Text = "Правила пачки:";
         lblPipelineRules.TextAlign = ContentAlignment.MiddleLeft;
@@ -2019,8 +2018,8 @@ partial class MainForm
         // 
         // pipelineButtons
         // 
-        pipelineControlsLayout.SetColumnSpan(pipelineButtons, 2);
         pipelineButtons.AutoScroll = true;
+        pipelineControlsLayout.SetColumnSpan(pipelineButtons, 2);
         pipelineButtons.Controls.Add(btnRefreshGenerationPlan);
         pipelineButtons.Controls.Add(btnCheckMechanics);
         pipelineButtons.Controls.Add(btnRunSelectedPipelineStep);
@@ -2030,7 +2029,7 @@ partial class MainForm
         pipelineButtons.Controls.Add(btnOpenDraftsFolderPipeline);
         pipelineButtons.Controls.Add(btnOpenCurrentDraft);
         pipelineButtons.Dock = DockStyle.Fill;
-        pipelineButtons.Location = new Point(3, 463);
+        pipelineButtons.Location = new Point(3, 501);
         pipelineButtons.Name = "pipelineButtons";
         pipelineButtons.Size = new Size(454, 64);
         pipelineButtons.TabIndex = 15;
@@ -2055,7 +2054,7 @@ partial class MainForm
         // 
         // btnRunSelectedPipelineStep
         // 
-        btnRunSelectedPipelineStep.Location = new Point(275, 3);
+        btnRunSelectedPipelineStep.Location = new Point(3, 37);
         btnRunSelectedPipelineStep.Name = "btnRunSelectedPipelineStep";
         btnRunSelectedPipelineStep.Size = new Size(230, 28);
         btnRunSelectedPipelineStep.TabIndex = 2;
@@ -2064,7 +2063,7 @@ partial class MainForm
         // 
         // btnReviewLatestDraft
         // 
-        btnReviewLatestDraft.Location = new Point(3, 37);
+        btnReviewLatestDraft.Location = new Point(239, 37);
         btnReviewLatestDraft.Name = "btnReviewLatestDraft";
         btnReviewLatestDraft.Size = new Size(150, 28);
         btnReviewLatestDraft.TabIndex = 2;
@@ -2073,7 +2072,7 @@ partial class MainForm
         // 
         // btnApplyLatestDraft
         // 
-        btnApplyLatestDraft.Location = new Point(159, 37);
+        btnApplyLatestDraft.Location = new Point(3, 71);
         btnApplyLatestDraft.Name = "btnApplyLatestDraft";
         btnApplyLatestDraft.Size = new Size(145, 28);
         btnApplyLatestDraft.TabIndex = 3;
@@ -2082,7 +2081,7 @@ partial class MainForm
         // 
         // btnRejectLatestDraft
         // 
-        btnRejectLatestDraft.Location = new Point(310, 37);
+        btnRejectLatestDraft.Location = new Point(154, 71);
         btnRejectLatestDraft.Name = "btnRejectLatestDraft";
         btnRejectLatestDraft.Size = new Size(130, 28);
         btnRejectLatestDraft.TabIndex = 4;
@@ -2091,7 +2090,7 @@ partial class MainForm
         // 
         // btnOpenDraftsFolderPipeline
         // 
-        btnOpenDraftsFolderPipeline.Location = new Point(3, 71);
+        btnOpenDraftsFolderPipeline.Location = new Point(290, 71);
         btnOpenDraftsFolderPipeline.Name = "btnOpenDraftsFolderPipeline";
         btnOpenDraftsFolderPipeline.Size = new Size(120, 28);
         btnOpenDraftsFolderPipeline.TabIndex = 5;
@@ -2100,7 +2099,7 @@ partial class MainForm
         // 
         // btnOpenCurrentDraft
         // 
-        btnOpenCurrentDraft.Location = new Point(129, 71);
+        btnOpenCurrentDraft.Location = new Point(3, 105);
         btnOpenCurrentDraft.Name = "btnOpenCurrentDraft";
         btnOpenCurrentDraft.Size = new Size(150, 28);
         btnOpenCurrentDraft.TabIndex = 6;
@@ -2112,7 +2111,7 @@ partial class MainForm
         pipelineControlsLayout.SetColumnSpan(txtPipelineDraftInfo, 2);
         txtPipelineDraftInfo.Dock = DockStyle.Fill;
         txtPipelineDraftInfo.Font = new Font("Consolas", 9F);
-        txtPipelineDraftInfo.Location = new Point(3, 533);
+        txtPipelineDraftInfo.Location = new Point(3, 571);
         txtPipelineDraftInfo.Multiline = true;
         txtPipelineDraftInfo.Name = "txtPipelineDraftInfo";
         txtPipelineDraftInfo.ReadOnly = true;
@@ -2126,11 +2125,11 @@ partial class MainForm
         pipelineControlsLayout.SetColumnSpan(txtPipelineDetails, 2);
         txtPipelineDetails.Dock = DockStyle.Fill;
         txtPipelineDetails.Font = new Font("Consolas", 10F);
-        txtPipelineDetails.Location = new Point(3, 603);
+        txtPipelineDetails.Location = new Point(3, 641);
         txtPipelineDetails.Multiline = true;
         txtPipelineDetails.Name = "txtPipelineDetails";
         txtPipelineDetails.ScrollBars = ScrollBars.Both;
-        txtPipelineDetails.Size = new Size(454, 80);
+        txtPipelineDetails.Size = new Size(454, 42);
         txtPipelineDetails.TabIndex = 17;
         // 
         // tabAssets
@@ -2184,8 +2183,8 @@ partial class MainForm
         // 
         // assetsBottomLayout
         // 
-        assetsLayout.SetColumnSpan(assetsBottomLayout, 2);
         assetsBottomLayout.ColumnCount = 2;
+        assetsLayout.SetColumnSpan(assetsBottomLayout, 2);
         assetsBottomLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160F));
         assetsBottomLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         assetsBottomLayout.Controls.Add(assetsBatchOptions, 0, 0);
@@ -2217,25 +2216,6 @@ partial class MainForm
         assetsBatchOptions.Size = new Size(1254, 28);
         assetsBatchOptions.TabIndex = 0;
         // 
-        // assetsBatchButtons
-        // 
-        assetsBottomLayout.SetColumnSpan(assetsBatchButtons, 2);
-        assetsBatchButtons.AutoScroll = true;
-        assetsBatchButtons.Controls.Add(btnGenerateStatsResourcesBatch);
-        assetsBatchButtons.Controls.Add(btnGenerateItemsBatch);
-        assetsBatchButtons.Controls.Add(btnGenerateEquipmentBatch);
-        assetsBatchButtons.Controls.Add(btnGenerateSkillsBatch);
-        assetsBatchButtons.Controls.Add(btnGenerateSpellsBatch);
-        assetsBatchButtons.Controls.Add(btnGenerateLocationsBatch);
-        assetsBatchButtons.Controls.Add(btnGenerateScenesBatch);
-        assetsBatchButtons.Controls.Add(btnGenerateEncountersBatch);
-        assetsBatchButtons.Dock = DockStyle.Fill;
-        assetsBatchButtons.Location = new Point(3, 37);
-        assetsBatchButtons.Name = "assetsBatchButtons";
-        assetsBatchButtons.Size = new Size(1254, 28);
-        assetsBatchButtons.TabIndex = 1;
-        assetsBatchButtons.WrapContents = false;
-        // 
         // lblBatchCount
         // 
         lblBatchCount.AutoSize = true;
@@ -2262,19 +2242,37 @@ partial class MainForm
         lblBatchCategory.Location = new Point(150, 6);
         lblBatchCategory.Margin = new Padding(3, 6, 3, 0);
         lblBatchCategory.Name = "lblBatchCategory";
-        lblBatchCategory.Size = new Size(65, 15);
+        lblBatchCategory.Size = new Size(66, 15);
         lblBatchCategory.TabIndex = 2;
         lblBatchCategory.Text = "Категория:";
         // 
         // cmbBatchCategory
         // 
-        cmbBatchCategory.DropDownStyle = ComboBoxStyle.DropDown;
         cmbBatchCategory.Items.AddRange(new object[] { "general", "stats-resources", "formulas", "status-effects", "progression", "gameplay-actions", "items", "equipment", "skills", "spells", "locations", "scenes", "encounters" });
-        cmbBatchCategory.Location = new Point(221, 3);
+        cmbBatchCategory.Location = new Point(222, 3);
         cmbBatchCategory.Name = "cmbBatchCategory";
         cmbBatchCategory.Size = new Size(130, 23);
         cmbBatchCategory.TabIndex = 3;
         cmbBatchCategory.Text = "general";
+        // 
+        // assetsBatchButtons
+        // 
+        assetsBatchButtons.AutoScroll = true;
+        assetsBottomLayout.SetColumnSpan(assetsBatchButtons, 2);
+        assetsBatchButtons.Controls.Add(btnGenerateStatsResourcesBatch);
+        assetsBatchButtons.Controls.Add(btnGenerateItemsBatch);
+        assetsBatchButtons.Controls.Add(btnGenerateEquipmentBatch);
+        assetsBatchButtons.Controls.Add(btnGenerateSkillsBatch);
+        assetsBatchButtons.Controls.Add(btnGenerateSpellsBatch);
+        assetsBatchButtons.Controls.Add(btnGenerateLocationsBatch);
+        assetsBatchButtons.Controls.Add(btnGenerateScenesBatch);
+        assetsBatchButtons.Controls.Add(btnGenerateEncountersBatch);
+        assetsBatchButtons.Dock = DockStyle.Fill;
+        assetsBatchButtons.Location = new Point(3, 37);
+        assetsBatchButtons.Name = "assetsBatchButtons";
+        assetsBatchButtons.Size = new Size(1254, 28);
+        assetsBatchButtons.TabIndex = 1;
+        assetsBatchButtons.WrapContents = false;
         // 
         // btnGenerateStatsResourcesBatch
         // 
@@ -2284,29 +2282,6 @@ partial class MainForm
         btnGenerateStatsResourcesBatch.TabIndex = 4;
         btnGenerateStatsResourcesBatch.Text = "Статы/ресурсы";
         btnGenerateStatsResourcesBatch.Click += btnGenerateStatsResourcesBatch_Click;
-        // 
-        // assetsButtons
-        // 
-        assetsBottomLayout.SetColumnSpan(assetsButtons, 2);
-        assetsButtons.Controls.Add(btnBuildImagePrompts);
-        assetsButtons.Controls.Add(btnApprovePrompt);
-        assetsButtons.Controls.Add(btnRunFooocusQueue);
-        assetsButtons.Controls.Add(btnImportAssets);
-        assetsButtons.Controls.Add(btnSelectImage);
-        assetsButtons.Dock = DockStyle.Fill;
-        assetsButtons.Location = new Point(3, 157);
-        assetsButtons.Name = "assetsButtons";
-        assetsButtons.Size = new Size(1254, 39);
-        assetsButtons.TabIndex = 3;
-        // 
-        // btnBuildImagePrompts
-        // 
-        btnBuildImagePrompts.Location = new Point(3, 3);
-        btnBuildImagePrompts.Name = "btnBuildImagePrompts";
-        btnBuildImagePrompts.Size = new Size(130, 23);
-        btnBuildImagePrompts.TabIndex = 0;
-        btnBuildImagePrompts.Text = "Image prompt-ы";
-        btnBuildImagePrompts.Click += btnBuildImagePrompts_Click;
         // 
         // btnGenerateItemsBatch
         // 
@@ -2390,6 +2365,29 @@ partial class MainForm
         txtBatchRules.ScrollBars = ScrollBars.Vertical;
         txtBatchRules.Size = new Size(1094, 80);
         txtBatchRules.TabIndex = 2;
+        // 
+        // assetsButtons
+        // 
+        assetsBottomLayout.SetColumnSpan(assetsButtons, 2);
+        assetsButtons.Controls.Add(btnBuildImagePrompts);
+        assetsButtons.Controls.Add(btnApprovePrompt);
+        assetsButtons.Controls.Add(btnRunFooocusQueue);
+        assetsButtons.Controls.Add(btnImportAssets);
+        assetsButtons.Controls.Add(btnSelectImage);
+        assetsButtons.Dock = DockStyle.Fill;
+        assetsButtons.Location = new Point(3, 157);
+        assetsButtons.Name = "assetsButtons";
+        assetsButtons.Size = new Size(1254, 39);
+        assetsButtons.TabIndex = 3;
+        // 
+        // btnBuildImagePrompts
+        // 
+        btnBuildImagePrompts.Location = new Point(3, 3);
+        btnBuildImagePrompts.Name = "btnBuildImagePrompts";
+        btnBuildImagePrompts.Size = new Size(130, 23);
+        btnBuildImagePrompts.TabIndex = 0;
+        btnBuildImagePrompts.Text = "Image prompt-ы";
+        btnBuildImagePrompts.Click += btnBuildImagePrompts_Click;
         // 
         // btnApprovePrompt
         // 
@@ -2851,8 +2849,8 @@ partial class MainForm
         cmbLmProfiles.Name = "cmbLmProfiles";
         cmbLmProfiles.Size = new Size(834, 23);
         cmbLmProfiles.TabIndex = 1;
-        cmbLmProfiles.Format += cmbLmProfiles_Format;
         cmbLmProfiles.SelectedIndexChanged += cmbLmProfiles_SelectedIndexChanged;
+        cmbLmProfiles.Format += cmbLmProfiles_Format;
         // 
         // btnAddLmProfile
         // 
@@ -2954,7 +2952,7 @@ partial class MainForm
         // lblEndpoint
         // 
         lblEndpoint.Dock = DockStyle.Fill;
-        lblEndpoint.Location = new Point(11, 8);
+        lblEndpoint.Location = new Point(11, 110);
         lblEndpoint.Name = "lblEndpoint";
         lblEndpoint.Size = new Size(164, 34);
         lblEndpoint.TabIndex = 0;
@@ -2964,7 +2962,7 @@ partial class MainForm
         // txtEndpoint
         // 
         txtEndpoint.Dock = DockStyle.Fill;
-        txtEndpoint.Location = new Point(181, 11);
+        txtEndpoint.Location = new Point(181, 113);
         txtEndpoint.Name = "txtEndpoint";
         txtEndpoint.Size = new Size(834, 23);
         txtEndpoint.TabIndex = 1;
@@ -2973,7 +2971,7 @@ partial class MainForm
         // btnTestLm
         // 
         btnTestLm.Dock = DockStyle.Fill;
-        btnTestLm.Location = new Point(1021, 11);
+        btnTestLm.Location = new Point(1021, 113);
         btnTestLm.Name = "btnTestLm";
         btnTestLm.Size = new Size(114, 28);
         btnTestLm.TabIndex = 2;
@@ -2983,7 +2981,7 @@ partial class MainForm
         // lblApiKey
         // 
         lblApiKey.Dock = DockStyle.Fill;
-        lblApiKey.Location = new Point(11, 42);
+        lblApiKey.Location = new Point(11, 144);
         lblApiKey.Name = "lblApiKey";
         lblApiKey.Size = new Size(164, 34);
         lblApiKey.TabIndex = 3;
@@ -2993,7 +2991,7 @@ partial class MainForm
         // txtApiKey
         // 
         txtApiKey.Dock = DockStyle.Fill;
-        txtApiKey.Location = new Point(181, 45);
+        txtApiKey.Location = new Point(181, 147);
         txtApiKey.Name = "txtApiKey";
         txtApiKey.Size = new Size(834, 23);
         txtApiKey.TabIndex = 4;
@@ -3002,7 +3000,7 @@ partial class MainForm
         // lblModel
         // 
         lblModel.Dock = DockStyle.Fill;
-        lblModel.Location = new Point(11, 76);
+        lblModel.Location = new Point(11, 178);
         lblModel.Name = "lblModel";
         lblModel.Size = new Size(164, 34);
         lblModel.TabIndex = 5;
@@ -3012,7 +3010,7 @@ partial class MainForm
         // txtModel
         // 
         txtModel.Dock = DockStyle.Fill;
-        txtModel.Location = new Point(181, 79);
+        txtModel.Location = new Point(181, 181);
         txtModel.Name = "txtModel";
         txtModel.Size = new Size(834, 23);
         txtModel.TabIndex = 6;
@@ -3020,7 +3018,7 @@ partial class MainForm
         // lblTimeout
         // 
         lblTimeout.Dock = DockStyle.Fill;
-        lblTimeout.Location = new Point(11, 110);
+        lblTimeout.Location = new Point(11, 212);
         lblTimeout.Name = "lblTimeout";
         lblTimeout.Size = new Size(164, 34);
         lblTimeout.TabIndex = 7;
@@ -3030,7 +3028,7 @@ partial class MainForm
         // nudTimeout
         // 
         nudTimeout.Dock = DockStyle.Fill;
-        nudTimeout.Location = new Point(181, 113);
+        nudTimeout.Location = new Point(181, 215);
         nudTimeout.Maximum = new decimal(new int[] { 1800, 0, 0, 0 });
         nudTimeout.Name = "nudTimeout";
         nudTimeout.Size = new Size(834, 23);
@@ -3039,7 +3037,7 @@ partial class MainForm
         // lblMaxInputContextTokens
         // 
         lblMaxInputContextTokens.Dock = DockStyle.Fill;
-        lblMaxInputContextTokens.Location = new Point(11, 144);
+        lblMaxInputContextTokens.Location = new Point(11, 246);
         lblMaxInputContextTokens.Name = "lblMaxInputContextTokens";
         lblMaxInputContextTokens.Size = new Size(164, 34);
         lblMaxInputContextTokens.TabIndex = 9;
@@ -3050,7 +3048,7 @@ partial class MainForm
         // 
         nudMaxInputContextTokens.Dock = DockStyle.Fill;
         nudMaxInputContextTokens.Increment = new decimal(new int[] { 1024, 0, 0, 0 });
-        nudMaxInputContextTokens.Location = new Point(181, 147);
+        nudMaxInputContextTokens.Location = new Point(181, 249);
         nudMaxInputContextTokens.Maximum = new decimal(new int[] { 131072, 0, 0, 0 });
         nudMaxInputContextTokens.Minimum = new decimal(new int[] { 4096, 0, 0, 0 });
         nudMaxInputContextTokens.Name = "nudMaxInputContextTokens";
@@ -3061,7 +3059,7 @@ partial class MainForm
         // lblMaxOutputTokens
         // 
         lblMaxOutputTokens.Dock = DockStyle.Fill;
-        lblMaxOutputTokens.Location = new Point(11, 178);
+        lblMaxOutputTokens.Location = new Point(11, 280);
         lblMaxOutputTokens.Name = "lblMaxOutputTokens";
         lblMaxOutputTokens.Size = new Size(164, 34);
         lblMaxOutputTokens.TabIndex = 11;
@@ -3072,7 +3070,7 @@ partial class MainForm
         // 
         nudMaxOutputTokens.Dock = DockStyle.Fill;
         nudMaxOutputTokens.Increment = new decimal(new int[] { 512, 0, 0, 0 });
-        nudMaxOutputTokens.Location = new Point(181, 181);
+        nudMaxOutputTokens.Location = new Point(181, 283);
         nudMaxOutputTokens.Maximum = new decimal(new int[] { 32768, 0, 0, 0 });
         nudMaxOutputTokens.Minimum = new decimal(new int[] { 512, 0, 0, 0 });
         nudMaxOutputTokens.Name = "nudMaxOutputTokens";
@@ -3083,7 +3081,7 @@ partial class MainForm
         // lblLmUnloadUrl
         // 
         lblLmUnloadUrl.Dock = DockStyle.Fill;
-        lblLmUnloadUrl.Location = new Point(11, 144);
+        lblLmUnloadUrl.Location = new Point(11, 314);
         lblLmUnloadUrl.Name = "lblLmUnloadUrl";
         lblLmUnloadUrl.Size = new Size(164, 34);
         lblLmUnloadUrl.TabIndex = 9;
@@ -3093,7 +3091,7 @@ partial class MainForm
         // txtLmUnloadUrl
         // 
         txtLmUnloadUrl.Dock = DockStyle.Fill;
-        txtLmUnloadUrl.Location = new Point(181, 147);
+        txtLmUnloadUrl.Location = new Point(181, 317);
         txtLmUnloadUrl.Name = "txtLmUnloadUrl";
         txtLmUnloadUrl.Size = new Size(834, 23);
         txtLmUnloadUrl.TabIndex = 10;
@@ -3101,7 +3099,7 @@ partial class MainForm
         // lblLmUnloadCommand
         // 
         lblLmUnloadCommand.Dock = DockStyle.Fill;
-        lblLmUnloadCommand.Location = new Point(11, 178);
+        lblLmUnloadCommand.Location = new Point(11, 348);
         lblLmUnloadCommand.Name = "lblLmUnloadCommand";
         lblLmUnloadCommand.Size = new Size(164, 34);
         lblLmUnloadCommand.TabIndex = 11;
@@ -3111,7 +3109,7 @@ partial class MainForm
         // txtLmUnloadCommand
         // 
         txtLmUnloadCommand.Dock = DockStyle.Fill;
-        txtLmUnloadCommand.Location = new Point(181, 181);
+        txtLmUnloadCommand.Location = new Point(181, 351);
         txtLmUnloadCommand.Name = "txtLmUnloadCommand";
         txtLmUnloadCommand.Size = new Size(834, 23);
         txtLmUnloadCommand.TabIndex = 12;
@@ -3119,7 +3117,7 @@ partial class MainForm
         // lblLmUnloadTimeout
         // 
         lblLmUnloadTimeout.Dock = DockStyle.Fill;
-        lblLmUnloadTimeout.Location = new Point(11, 212);
+        lblLmUnloadTimeout.Location = new Point(11, 382);
         lblLmUnloadTimeout.Name = "lblLmUnloadTimeout";
         lblLmUnloadTimeout.Size = new Size(164, 34);
         lblLmUnloadTimeout.TabIndex = 13;
@@ -3129,7 +3127,7 @@ partial class MainForm
         // nudLmUnloadTimeout
         // 
         nudLmUnloadTimeout.Dock = DockStyle.Fill;
-        nudLmUnloadTimeout.Location = new Point(181, 215);
+        nudLmUnloadTimeout.Location = new Point(181, 385);
         nudLmUnloadTimeout.Maximum = new decimal(new int[] { 1800, 0, 0, 0 });
         nudLmUnloadTimeout.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
         nudLmUnloadTimeout.Name = "nudLmUnloadTimeout";
@@ -3140,7 +3138,7 @@ partial class MainForm
         // lblContinueIfUnloadFails
         // 
         lblContinueIfUnloadFails.Dock = DockStyle.Fill;
-        lblContinueIfUnloadFails.Location = new Point(11, 246);
+        lblContinueIfUnloadFails.Location = new Point(11, 416);
         lblContinueIfUnloadFails.Name = "lblContinueIfUnloadFails";
         lblContinueIfUnloadFails.Size = new Size(164, 34);
         lblContinueIfUnloadFails.TabIndex = 15;
@@ -3152,7 +3150,7 @@ partial class MainForm
         chkContinueIfUnloadFails.Checked = true;
         chkContinueIfUnloadFails.CheckState = CheckState.Checked;
         chkContinueIfUnloadFails.Dock = DockStyle.Fill;
-        chkContinueIfUnloadFails.Location = new Point(181, 249);
+        chkContinueIfUnloadFails.Location = new Point(181, 419);
         chkContinueIfUnloadFails.Name = "chkContinueIfUnloadFails";
         chkContinueIfUnloadFails.Size = new Size(834, 28);
         chkContinueIfUnloadFails.TabIndex = 16;
@@ -3161,7 +3159,7 @@ partial class MainForm
         // lblFooocusLaunch
         // 
         lblFooocusLaunch.Dock = DockStyle.Fill;
-        lblFooocusLaunch.Location = new Point(11, 280);
+        lblFooocusLaunch.Location = new Point(11, 450);
         lblFooocusLaunch.Name = "lblFooocusLaunch";
         lblFooocusLaunch.Size = new Size(164, 34);
         lblFooocusLaunch.TabIndex = 17;
@@ -3171,7 +3169,7 @@ partial class MainForm
         // txtFooocusLaunch
         // 
         txtFooocusLaunch.Dock = DockStyle.Fill;
-        txtFooocusLaunch.Location = new Point(181, 283);
+        txtFooocusLaunch.Location = new Point(181, 453);
         txtFooocusLaunch.Name = "txtFooocusLaunch";
         txtFooocusLaunch.Size = new Size(834, 23);
         txtFooocusLaunch.TabIndex = 18;
@@ -3179,7 +3177,7 @@ partial class MainForm
         // btnBrowseFooocusLaunch
         // 
         btnBrowseFooocusLaunch.Dock = DockStyle.Fill;
-        btnBrowseFooocusLaunch.Location = new Point(1021, 283);
+        btnBrowseFooocusLaunch.Location = new Point(1021, 453);
         btnBrowseFooocusLaunch.Name = "btnBrowseFooocusLaunch";
         btnBrowseFooocusLaunch.Size = new Size(114, 28);
         btnBrowseFooocusLaunch.TabIndex = 19;
@@ -3189,7 +3187,7 @@ partial class MainForm
         // btnBrowseFooocusFolder
         // 
         btnBrowseFooocusFolder.Dock = DockStyle.Fill;
-        btnBrowseFooocusFolder.Location = new Point(1141, 283);
+        btnBrowseFooocusFolder.Location = new Point(1141, 453);
         btnBrowseFooocusFolder.Name = "btnBrowseFooocusFolder";
         btnBrowseFooocusFolder.Size = new Size(114, 28);
         btnBrowseFooocusFolder.TabIndex = 20;
@@ -3199,7 +3197,7 @@ partial class MainForm
         // lblFooocusWorkingDir
         // 
         lblFooocusWorkingDir.Dock = DockStyle.Fill;
-        lblFooocusWorkingDir.Location = new Point(11, 314);
+        lblFooocusWorkingDir.Location = new Point(11, 484);
         lblFooocusWorkingDir.Name = "lblFooocusWorkingDir";
         lblFooocusWorkingDir.Size = new Size(164, 34);
         lblFooocusWorkingDir.TabIndex = 21;
@@ -3209,7 +3207,7 @@ partial class MainForm
         // txtFooocusWorkingDir
         // 
         txtFooocusWorkingDir.Dock = DockStyle.Fill;
-        txtFooocusWorkingDir.Location = new Point(181, 317);
+        txtFooocusWorkingDir.Location = new Point(181, 487);
         txtFooocusWorkingDir.Name = "txtFooocusWorkingDir";
         txtFooocusWorkingDir.Size = new Size(834, 23);
         txtFooocusWorkingDir.TabIndex = 22;
@@ -3217,7 +3215,7 @@ partial class MainForm
         // btnDetectFooocus
         // 
         btnDetectFooocus.Dock = DockStyle.Fill;
-        btnDetectFooocus.Location = new Point(1021, 317);
+        btnDetectFooocus.Location = new Point(1021, 487);
         btnDetectFooocus.Name = "btnDetectFooocus";
         btnDetectFooocus.Size = new Size(114, 28);
         btnDetectFooocus.TabIndex = 23;
@@ -3227,7 +3225,7 @@ partial class MainForm
         // lblFooocusOutput
         // 
         lblFooocusOutput.Dock = DockStyle.Fill;
-        lblFooocusOutput.Location = new Point(11, 348);
+        lblFooocusOutput.Location = new Point(11, 518);
         lblFooocusOutput.Name = "lblFooocusOutput";
         lblFooocusOutput.Size = new Size(164, 34);
         lblFooocusOutput.TabIndex = 24;
@@ -3237,7 +3235,7 @@ partial class MainForm
         // txtFooocusOutput
         // 
         txtFooocusOutput.Dock = DockStyle.Fill;
-        txtFooocusOutput.Location = new Point(181, 351);
+        txtFooocusOutput.Location = new Point(181, 521);
         txtFooocusOutput.Name = "txtFooocusOutput";
         txtFooocusOutput.Size = new Size(834, 23);
         txtFooocusOutput.TabIndex = 25;
@@ -3245,7 +3243,7 @@ partial class MainForm
         // btnBrowseFooocusOutput
         // 
         btnBrowseFooocusOutput.Dock = DockStyle.Fill;
-        btnBrowseFooocusOutput.Location = new Point(1021, 351);
+        btnBrowseFooocusOutput.Location = new Point(1021, 521);
         btnBrowseFooocusOutput.Name = "btnBrowseFooocusOutput";
         btnBrowseFooocusOutput.Size = new Size(114, 28);
         btnBrowseFooocusOutput.TabIndex = 26;
@@ -3255,7 +3253,7 @@ partial class MainForm
         // btnCheckFooocusPaths
         // 
         btnCheckFooocusPaths.Dock = DockStyle.Fill;
-        btnCheckFooocusPaths.Location = new Point(1141, 351);
+        btnCheckFooocusPaths.Location = new Point(1141, 521);
         btnCheckFooocusPaths.Name = "btnCheckFooocusPaths";
         btnCheckFooocusPaths.Size = new Size(114, 28);
         btnCheckFooocusPaths.TabIndex = 27;
@@ -3265,7 +3263,7 @@ partial class MainForm
         // lblFooocusEndpoint
         // 
         lblFooocusEndpoint.Dock = DockStyle.Fill;
-        lblFooocusEndpoint.Location = new Point(11, 382);
+        lblFooocusEndpoint.Location = new Point(11, 552);
         lblFooocusEndpoint.Name = "lblFooocusEndpoint";
         lblFooocusEndpoint.Size = new Size(164, 34);
         lblFooocusEndpoint.TabIndex = 28;
@@ -3275,7 +3273,7 @@ partial class MainForm
         // txtFooocusEndpoint
         // 
         txtFooocusEndpoint.Dock = DockStyle.Fill;
-        txtFooocusEndpoint.Location = new Point(181, 385);
+        txtFooocusEndpoint.Location = new Point(181, 555);
         txtFooocusEndpoint.Name = "txtFooocusEndpoint";
         txtFooocusEndpoint.Size = new Size(834, 23);
         txtFooocusEndpoint.TabIndex = 29;
@@ -3283,7 +3281,7 @@ partial class MainForm
         // lblFooocusStartup
         // 
         lblFooocusStartup.Dock = DockStyle.Fill;
-        lblFooocusStartup.Location = new Point(11, 416);
+        lblFooocusStartup.Location = new Point(11, 586);
         lblFooocusStartup.Name = "lblFooocusStartup";
         lblFooocusStartup.Size = new Size(164, 34);
         lblFooocusStartup.TabIndex = 30;
@@ -3293,7 +3291,7 @@ partial class MainForm
         // nudFooocusStartup
         // 
         nudFooocusStartup.Dock = DockStyle.Fill;
-        nudFooocusStartup.Location = new Point(181, 419);
+        nudFooocusStartup.Location = new Point(181, 589);
         nudFooocusStartup.Maximum = new decimal(new int[] { 1800, 0, 0, 0 });
         nudFooocusStartup.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
         nudFooocusStartup.Name = "nudFooocusStartup";
@@ -3304,7 +3302,7 @@ partial class MainForm
         // lblFooocusShutdown
         // 
         lblFooocusShutdown.Dock = DockStyle.Fill;
-        lblFooocusShutdown.Location = new Point(11, 450);
+        lblFooocusShutdown.Location = new Point(11, 620);
         lblFooocusShutdown.Name = "lblFooocusShutdown";
         lblFooocusShutdown.Size = new Size(164, 34);
         lblFooocusShutdown.TabIndex = 32;
@@ -3314,7 +3312,7 @@ partial class MainForm
         // nudFooocusShutdown
         // 
         nudFooocusShutdown.Dock = DockStyle.Fill;
-        nudFooocusShutdown.Location = new Point(181, 453);
+        nudFooocusShutdown.Location = new Point(181, 623);
         nudFooocusShutdown.Maximum = new decimal(new int[] { 300, 0, 0, 0 });
         nudFooocusShutdown.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
         nudFooocusShutdown.Name = "nudFooocusShutdown";
@@ -3325,7 +3323,7 @@ partial class MainForm
         // lblSettings
         // 
         lblSettings.Dock = DockStyle.Fill;
-        lblSettings.Location = new Point(11, 484);
+        lblSettings.Location = new Point(11, 654);
         lblSettings.Name = "lblSettings";
         lblSettings.Size = new Size(164, 34);
         lblSettings.TabIndex = 34;
@@ -3335,12 +3333,19 @@ partial class MainForm
         // btnSaveSettings
         // 
         btnSaveSettings.Dock = DockStyle.Fill;
-        btnSaveSettings.Location = new Point(181, 487);
+        btnSaveSettings.Location = new Point(181, 657);
         btnSaveSettings.Name = "btnSaveSettings";
         btnSaveSettings.Size = new Size(834, 28);
         btnSaveSettings.TabIndex = 35;
         btnSaveSettings.Text = "Сохранить настройки";
         btnSaveSettings.Click += btnSaveSettings_Click;
+        // 
+        // assetsPromptButtons
+        // 
+        assetsPromptButtons.Location = new Point(0, 0);
+        assetsPromptButtons.Name = "assetsPromptButtons";
+        assetsPromptButtons.Size = new Size(200, 100);
+        assetsPromptButtons.TabIndex = 0;
         // 
         // lblValidationResult
         // 
@@ -3378,6 +3383,7 @@ partial class MainForm
         gameCrafterTopLayout.ResumeLayout(false);
         gameCrafterTopLayout.PerformLayout();
         gameCrafterButtons.ResumeLayout(false);
+        gameCrafterButtons.PerformLayout();
         gameCrafterSplit.Panel1.ResumeLayout(false);
         gameCrafterSplit.Panel2.ResumeLayout(false);
         gameCrafterSplit.Panel2.PerformLayout();
@@ -3415,12 +3421,10 @@ partial class MainForm
         assetsLayout.PerformLayout();
         assetsBottomLayout.ResumeLayout(false);
         assetsBottomLayout.PerformLayout();
-        assetsPromptButtons.ResumeLayout(false);
         assetsBatchOptions.ResumeLayout(false);
         assetsBatchOptions.PerformLayout();
-        assetsBatchButtons.ResumeLayout(false);
-        assetsBatchButtons.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudBatchCount).EndInit();
+        assetsBatchButtons.ResumeLayout(false);
         assetsButtons.ResumeLayout(false);
         tabPlay.ResumeLayout(false);
         playLayout.ResumeLayout(false);
