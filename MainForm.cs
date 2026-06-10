@@ -142,13 +142,13 @@ public partial class MainForm : Form
     {
         if (lstProjects.SelectedItem is not GameProjectSummary summary)
         {
-            MessageBox.Show(this, "Р’С‹Р±РµСЂРёС‚Рµ РїСЂРѕРµРєС‚ РІ СЃРїРёСЃРєРµ.", "РџСЂРѕРµРєС‚", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "Выберите проект в списке.", "Проект", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
         var title = string.IsNullOrWhiteSpace(summary.Title) ? summary.FolderName : summary.Title;
-        var confirmation = $"РЈРґР°Р»РёС‚СЊ РїСЂРѕРµРєС‚ \"{title}\"? РџР°РїРєР° Р±СѓРґРµС‚ РїРµСЂРµРјРµС‰РµРЅР° РІ _deleted РІРЅСѓС‚СЂРё РєР°С‚Р°Р»РѕРіР° РёРіСЂ.";
-        if (MessageBox.Show(this, confirmation, "РЈРґР°Р»РµРЅРёРµ РїСЂРѕРµРєС‚Р°", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        var confirmation = $"Удалить проект \"{title}\"? Папка будет перемещена в _deleted внутри каталога игр.";
+        if (MessageBox.Show(this, confirmation, "Удаление проекта", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
         {
             return;
         }
@@ -161,12 +161,12 @@ public partial class MainForm : Form
 
             if (!Directory.Exists(projectPath))
             {
-                throw new InvalidOperationException("РџР°РїРєР° РїСЂРѕРµРєС‚Р° РЅРµ РЅР°Р№РґРµРЅР°: " + projectPath);
+                throw new InvalidOperationException("Папка проекта не найдена: " + projectPath);
             }
 
             if (!IsPathUnderDirectory(projectPath, gamesRoot) || IsPathUnderDirectory(projectPath, deletedRoot))
             {
-                throw new InvalidOperationException("РЈРґР°Р»РµРЅРёРµ РѕС‚РјРµРЅРµРЅРѕ: РїР°РїРєР° РїСЂРѕРµРєС‚Р° РЅРµ РЅР°С…РѕРґРёС‚СЃСЏ РІ Р°РєС‚РёРІРЅРѕРј РєР°С‚Р°Р»РѕРіРµ РёРіСЂ.");
+                throw new InvalidOperationException("Удаление отменено: папка проекта не находится в активном каталоге игр.");
             }
 
             Directory.CreateDirectory(deletedRoot);
@@ -185,7 +185,7 @@ public partial class MainForm : Form
             }
 
             RefreshProjectList();
-            AppendLog("РџСЂРѕРµРєС‚ РїРµСЂРµРјРµС‰С‘РЅ РІ _deleted: " + destination);
+            AppendLog("Проект перемещён в _deleted: " + destination);
             await Task.CompletedTask;
         }, AppWorkflowStatus.Idle);
     }

@@ -108,6 +108,17 @@ public sealed class PromptBudgetServiceTests
     }
 
     [Fact]
+    public void GameplayActionsPrompt_ForbidsFormulaStringsInAmount()
+    {
+        var prompt = Prompts.GenerateGameplayActionsBatch.SystemPrompt;
+
+        Assert.Contains("amount must be integer", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Never put formulas", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"amount\": \"5 + dice(1, 4)\"", prompt);
+        Assert.Contains("\"amount\": 5", prompt);
+    }
+
+    [Fact]
     public void SerializeWithinBudget_UsesConservativeEstimatorForRussianText()
     {
         var service = new PromptBudgetService();

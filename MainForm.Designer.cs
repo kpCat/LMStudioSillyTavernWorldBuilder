@@ -881,7 +881,7 @@ partial class MainForm
         btnDeleteProject.Name = "btnDeleteProject";
         btnDeleteProject.Size = new Size(199, 36);
         btnDeleteProject.TabIndex = 8;
-        btnDeleteProject.Text = "РЈРґР°Р»РёС‚СЊ";
+        btnDeleteProject.Text = "Удалить";
         btnDeleteProject.Click += btnDeleteProject_Click;
         // 
         // pgProject

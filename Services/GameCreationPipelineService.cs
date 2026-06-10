@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Providers;
 using LMStudioSillyTavernWorldBuilder.Storage;
@@ -1018,6 +1019,8 @@ internal sealed class GameCreationPipelineService
     private async Task ApplyGeneratedProjectJsonCore(GameProjectData project, string text, Action<string> log, CancellationToken? cancellationToken)
     {
         var json = ExtractJson(text);
+        var normalizationWarnings = new List<string>();
+        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log);
         try
         {
             var generated = JsonSerializer.Deserialize<GameProjectData>(json, _jsonOptions);
@@ -1039,6 +1042,10 @@ internal sealed class GameCreationPipelineService
             var candidate = _cloneService.Clone(project);
             MergeGeneratedProjectData(candidate, generated);
             var validation = _validator.Validate(candidate);
+            foreach (var warning in normalizationWarnings)
+            {
+                validation.Warnings.Add(warning);
+            }
             foreach (var warning in validation.Warnings)
             {
                 log("Generated project warning: " + warning);
@@ -1085,7 +1092,7 @@ internal sealed class GameCreationPipelineService
         }
         catch (Exception ex)
         {
-            log("Could not parse generated project JSON; raw text saved for manual review. " + ex.Message);
+            log("Could not parse generated project JSON; raw text saved for manual review. " + DescribeJsonException(ex, "initial-content", null));
         }
     }
 
@@ -1098,6 +1105,8 @@ internal sealed class GameCreationPipelineService
         }
 
         var json = ExtractJson(rawText);
+        var normalizationWarnings = new List<string>();
+        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log);
         try
         {
             var generated = JsonSerializer.Deserialize<GameProjectData>(json, _jsonOptions);
@@ -1106,6 +1115,10 @@ internal sealed class GameCreationPipelineService
                 var emptyDraft = await _draftService.SaveRawDraftAsync(project, stage, string.Empty, rawText, cancellationToken);
                 emptyDraft.Validation.IsValid = false;
                 emptyDraft.Validation.Errors.Add("Generated batch JSON was empty.");
+                foreach (var warning in normalizationWarnings)
+                {
+                    emptyDraft.Validation.Warnings.Add(warning);
+                }
                 await _draftService.SaveDraftManifestAsync(project, emptyDraft, cancellationToken);
                 await _draftService.SaveValidationReportAsync(project, emptyDraft, cancellationToken);
                 log("Пачка сохранена как невалидный draft: JSON пустой.");
@@ -1119,6 +1132,10 @@ internal sealed class GameCreationPipelineService
             var candidate = _cloneService.Clone(project);
             MergeGeneratedProjectData(candidate, generated);
             var validation = _validator.Validate(candidate);
+            foreach (var warning in normalizationWarnings)
+            {
+                validation.Warnings.Add(warning);
+            }
             draft.Validation = validation;
             foreach (var warning in validation.Warnings)
             {
@@ -1156,12 +1173,132 @@ internal sealed class GameCreationPipelineService
         {
             var draft = await _draftService.SaveRawDraftAsync(project, stage, string.Empty, rawText, cancellationToken);
             draft.Validation.IsValid = false;
-            draft.Validation.Errors.Add("Could not parse generated batch as GameProjectData: " + ex.Message);
+            draft.Validation.Errors.Add("Could not parse generated batch as GameProjectData: " + DescribeJsonException(ex, stage, draft.RawOutputFile));
+            foreach (var warning in normalizationWarnings)
+            {
+                draft.Validation.Warnings.Add(warning);
+            }
             await _draftService.SaveDraftManifestAsync(project, draft, cancellationToken);
             await _draftService.SaveValidationReportAsync(project, draft, cancellationToken);
-            log("Could not parse generated batch JSON; raw text saved as invalid draft. " + ex.Message);
+            log("Could not parse generated batch JSON; raw text saved as invalid draft. " + DescribeJsonException(ex, stage, draft.RawOutputFile));
             return draft;
         }
+    }
+
+    internal static string NormalizeGeneratedProjectJsonAmountsForTests(string json, List<string> warnings)
+    {
+        return NormalizeGeneratedProjectJsonAmounts(json, warnings, null);
+    }
+
+    private static string NormalizeGeneratedProjectJsonAmounts(string json, List<string> warnings, Action<string>? log)
+    {
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(json);
+        }
+        catch
+        {
+            return json;
+        }
+
+        if (root?["actions"] is not JsonArray actions)
+        {
+            return json;
+        }
+
+        for (var actionIndex = 0; actionIndex < actions.Count; actionIndex++)
+        {
+            if (actions[actionIndex] is not JsonObject action)
+            {
+                continue;
+            }
+
+            NormalizeAmountArray(action["costs"] as JsonArray, $"$.actions[{actionIndex}].costs", warnings, log);
+            NormalizeAmountArray(action["effects"] as JsonArray, $"$.actions[{actionIndex}].effects", warnings, log);
+        }
+
+        return root.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
+    }
+
+    private static void NormalizeAmountArray(JsonArray? items, string path, List<string> warnings, Action<string>? log)
+    {
+        if (items == null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (items[index] is not JsonObject item || item["amount"] == null)
+            {
+                continue;
+            }
+
+            NormalizeAmount(item, $"{path}[{index}].amount", warnings, log);
+        }
+    }
+
+    private static void NormalizeAmount(JsonObject item, string path, List<string> warnings, Action<string>? log)
+    {
+        if (item["amount"] is not JsonValue value || !value.TryGetValue<string>(out var rawAmount))
+        {
+            return;
+        }
+
+        rawAmount = rawAmount.Trim();
+        if (int.TryParse(rawAmount, out var integerAmount))
+        {
+            item["amount"] = integerAmount;
+            return;
+        }
+
+        if (IsFormulaId(rawAmount))
+        {
+            SetIfEmpty(item, "formulaId", rawAmount);
+            item["amount"] = 0;
+            AddNormalizationWarning(warnings, log, $"{path}: formula id was moved from amount to formulaId; amount set to 0.");
+            return;
+        }
+
+        SetIfEmpty(item, "formulaExpression", rawAmount);
+        item["amount"] = 0;
+        AddNormalizationWarning(warnings, log, $"{path}: formula/expression string was moved from amount to formulaExpression; amount set to 0.");
+    }
+
+    private static bool IsFormulaId(string value)
+    {
+        return value.StartsWith("formula_", StringComparison.OrdinalIgnoreCase)
+            && value.All(ch => char.IsLetterOrDigit(ch) || ch == '_');
+    }
+
+    private static void SetIfEmpty(JsonObject item, string propertyName, string value)
+    {
+        if (item[propertyName] is JsonValue existing && existing.TryGetValue<string>(out var existingText) && !string.IsNullOrWhiteSpace(existingText))
+        {
+            return;
+        }
+
+        item[propertyName] = value;
+    }
+
+    private static void AddNormalizationWarning(List<string> warnings, Action<string>? log, string warning)
+    {
+        warnings.Add(warning);
+        log?.Invoke("Generated JSON normalization warning: " + warning);
+    }
+
+    private static string DescribeJsonException(Exception ex, string stage, string? invalidDraftFile)
+    {
+        var path = ex is JsonException jsonException && !string.IsNullOrWhiteSpace(jsonException.Path)
+            ? jsonException.Path
+            : "unknown";
+        var draft = string.IsNullOrWhiteSpace(invalidDraftFile) ? "not saved" : invalidDraftFile;
+        return $"stage={stage}; path={path}; invalid draft={draft}; {ex.Message}";
     }
 
     private void MergeGeneratedProjectData(GameProjectData current, GameProjectData generated)

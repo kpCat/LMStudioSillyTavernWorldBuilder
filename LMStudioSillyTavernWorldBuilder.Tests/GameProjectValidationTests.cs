@@ -1,6 +1,7 @@
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Services;
 using LMStudioSillyTavernWorldBuilder.Storage;
+using System.Text.Json;
 
 namespace LMStudioSillyTavernWorldBuilder.Tests;
 
@@ -166,6 +167,50 @@ public sealed class GameProjectValidationTests
 
         Assert.NotEmpty(manifest.Files);
         Assert.DoesNotContain(manifest.Files, file => string.Equals(file.Status, "Applied", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void GeneratedActionsJsonNormalizer_AllowsStringAmountsBeforeDeserialize()
+    {
+        var raw = """
+        {
+          "actions": [
+            {
+              "id": "tune_metamodule",
+              "name": "Tune metamodule",
+              "costs": [
+                { "type": "currency", "targetId": "credits", "amount": "random(0, 15)" },
+                { "type": "variable", "targetId": "metamodule_sync", "amount": "3" }
+              ],
+              "effects": [
+                { "type": "skillExperience", "targetId": "skill_metamodule_tuning", "amount": "5 + dice(1, 4)" },
+                { "type": "variable", "targetId": "reputation_svetograd", "amount": "dice(-2, 4)" },
+                { "type": "stat", "targetId": "stability", "amount": "formula_stability_drain" }
+              ]
+            }
+          ],
+          "formulas": [
+            { "id": "formula_stability_drain", "expression": "0" }
+          ]
+        }
+        """;
+        var warnings = new List<string>();
+
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests(raw, warnings);
+        var project = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(project);
+        var action = Assert.Single(project!.Actions);
+        Assert.Equal(0, action.Costs[0].Amount);
+        Assert.Equal("random(0, 15)", action.Costs[0].FormulaExpression);
+        Assert.Equal(3, action.Costs[1].Amount);
+        Assert.Equal(0, action.Effects[0].Amount);
+        Assert.Equal("5 + dice(1, 4)", action.Effects[0].FormulaExpression);
+        Assert.Equal(0, action.Effects[1].Amount);
+        Assert.Equal("dice(-2, 4)", action.Effects[1].FormulaExpression);
+        Assert.Equal(0, action.Effects[2].Amount);
+        Assert.Equal("formula_stability_drain", action.Effects[2].FormulaId);
+        Assert.True(warnings.Count >= 4);
     }
 
     [Fact]

@@ -893,6 +893,7 @@ random()/dice() используй в основном для эффектов �
 Сгенерируйте маленькую пачку GameFormulaDefinition в коллекции Formulas.
 Формулы используют только безопасный синтаксис evaluator-а: целые числа, + - * / %, скобки, min, max, clamp, abs, percent, random, dice.
 Допустимые переменные: stat.<id>, effectiveStat.<id>, currency.<id>, variable.<id>, relationship.<id>, item.<id>.quantity, skill.<id>.level, skill.<id>.experience, player.level, player.experience, status.<id>.stacks, turn.
+Use only stat/currency/variable IDs present in compact context. Do not invent unknown stat IDs such as strength unless that exact ID exists in context.
 Примеры: effectiveStat.strength + skill.sword_mastery.level * 2; clamp(stat.agility + random(1, 6), 1, 100); percent(effectiveStat.intellect, 50) + dice(1, 6); 100 * player.level.
 Не используйте C#, JavaScript, SQL и любые внешние скрипты.
 """, new GenerationSettings(0.30, 0.85, 0.03, 30, 1.05, 0.00, 3500));
@@ -918,7 +919,15 @@ random()/dice() используй в основном для эффектов �
 Actions должны использовать Requirements, Costs, Effects, CooldownTurns и Tags.
 Действия могут быть социальными, исследовательскими, боевыми, ремесленными или особыми, в зависимости от жанра.
 Для боевых действий сейчас не создавайте полноценную пошаговую систему с врагами: только действия, которые runtime уже умеет применить.
-Действие-тренировка может давать небольшой рандомный skillExperience, например 5 + dice(1, 4). Действие-испытание может давать playerExperience.
+For every action cost/effect, amount must be integer JSON number only, without quotes.
+Never put formulas, dice(...), random(...), formula_* IDs, arithmetic, or text in amount.
+BAD: "amount": "5 + dice(1, 4)"
+BAD: "amount": "formula_stability_drain"
+BAD: "amount": "random(0, 15)"
+GOOD: "amount": 5
+If a variable result is needed, use the existing supported fields formulaExpression or formulaId on the same cost/effect and keep amount as an integer fallback.
+Use only IDs from compact context. For the current MVP smoke these known IDs are allowed when present in context: stats health, will, stamina, stability; currencies credits, fragments; variables reputation_svetograd, reputation_green_border, metamodule_sync; formulas formula_combat_damage_base, formula_metamodule_sync_gain, formula_stability_drain.
+Действие-тренировка может давать skillExperience: для fixed reward пиши amount integer, для variable reward пиши formulaExpression и amount integer fallback. Действие-испытание может давать playerExperience.
 """, new GenerationSettings(0.45, 0.90, 0.05, 40, 1.05, 0.00, 4500));
 
     public static readonly PromptPreset GenerateCombatBatch = new("GenerateCombatBatch", BatchRules + """
