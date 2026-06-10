@@ -1208,6 +1208,8 @@ internal sealed class GameCreationPipelineService
         }
 
         NormalizeGeneratedActionAmounts(rootObject, warnings, log);
+        NormalizeGeneratedSkillsAndSpells(rootObject, warnings, log);
+        NormalizeGeneratedStatusEffects(rootObject, warnings, log);
         NormalizeGeneratedWorldState(rootObject, warnings, log);
         NormalizeGeneratedScenes(rootObject, warnings, log);
 
@@ -1463,6 +1465,167 @@ internal sealed class GameCreationPipelineService
             AddNormalizationWarning(warnings, log, $"{path}[{index}].value: unsupported condition value was moved to text; value set to 0.");
         }
     }
+
+
+
+    private static void NormalizeGeneratedSkillsAndSpells(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["spells"] is JsonArray spells)
+        {
+            if (root["skills"] is not JsonArray skills)
+            {
+                skills = new JsonArray();
+                root["skills"] = skills;
+            }
+
+            for (var spellIndex = 0; spellIndex < spells.Count; spellIndex++)
+            {
+                if (spells[spellIndex] is not JsonObject spell)
+                {
+                    continue;
+                }
+
+                var skill = spell.DeepClone().AsObject();
+                skill["kind"] = "spell";
+                skills.Add(skill);
+                AddNormalizationWarning(warnings, log, $"$.spells[{spellIndex}]: moved to skills[] with kind=spell.");
+            }
+
+            root.Remove("spells");
+        }
+
+        if (root["skills"] is not JsonArray generatedSkills)
+        {
+            return;
+        }
+
+        for (var skillIndex = 0; skillIndex < generatedSkills.Count; skillIndex++)
+        {
+            if (generatedSkills[skillIndex] is not JsonObject skill)
+            {
+                continue;
+            }
+
+            NormalizeRequirementArray(skill["learnRequirements"] as JsonArray, $"$.skills[{skillIndex}].learnRequirements", warnings, log);
+            NormalizeRequirementArray(skill["useRequirements"] as JsonArray, $"$.skills[{skillIndex}].useRequirements", warnings, log);
+            NormalizeCostArray(skill["costs"] as JsonArray, $"$.skills[{skillIndex}].costs", warnings, log);
+            NormalizeAmountArray(skill["effects"] as JsonArray, $"$.skills[{skillIndex}].effects", warnings, log);
+        }
+    }
+
+    private static void NormalizeGeneratedStatusEffects(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["statusEffects"] is not JsonArray statusEffects)
+        {
+            return;
+        }
+
+        for (var statusIndex = 0; statusIndex < statusEffects.Count; statusIndex++)
+        {
+            if (statusEffects[statusIndex] is not JsonObject status)
+            {
+                continue;
+            }
+
+            NormalizeStatusEffectStackMode(status, $"$.statusEffects[{statusIndex}].stackMode", warnings, log);
+            NormalizeAmountArray(status["onApplyEffects"] as JsonArray, $"$.statusEffects[{statusIndex}].onApplyEffects", warnings, log);
+            NormalizeAmountArray(status["periodicEffects"] as JsonArray, $"$.statusEffects[{statusIndex}].periodicEffects", warnings, log);
+            NormalizeAmountArray(status["onExpireEffects"] as JsonArray, $"$.statusEffects[{statusIndex}].onExpireEffects", warnings, log);
+            NormalizeRequirementArray(status["removeRequirements"] as JsonArray, $"$.statusEffects[{statusIndex}].removeRequirements", warnings, log);
+            NormalizeModifierArray(status["modifiers"] as JsonArray, $"$.statusEffects[{statusIndex}].modifiers", warnings, log);
+        }
+    }
+
+    private static void NormalizeStatusEffectStackMode(JsonObject status, string path, List<string> warnings, Action<string>? log)
+    {
+        if (status["stackMode"] is not JsonValue stackModeValue || !stackModeValue.TryGetValue<string>(out var stackMode))
+        {
+            return;
+        }
+
+        var normalized = stackMode.Trim().ToLowerInvariant() switch
+        {
+            "add" or "additive" or "stacking" or "stacks" => "stack",
+            "refresh" or "stack" or "ignore" or "replace" => stackMode.Trim().ToLowerInvariant(),
+            "overwrite" or "override" => "replace",
+            "none" => "ignore",
+            _ => "refresh"
+        };
+
+        if (!string.Equals(stackMode, normalized, StringComparison.Ordinal))
+        {
+            status["stackMode"] = normalized;
+            AddNormalizationWarning(warnings, log, $"{path}: unsupported stackMode '{stackMode}' normalized to '{normalized}'.");
+        }
+    }
+
+    private static void NormalizeCostArray(JsonArray? costs, string path, List<string> warnings, Action<string>? log)
+    {
+        if (costs == null)
+        {
+            return;
+        }
+
+        for (var costIndex = 0; costIndex < costs.Count; costIndex++)
+        {
+            if (costs[costIndex] is not JsonObject cost)
+            {
+                continue;
+            }
+
+            NormalizeCostType(cost, $"{path}[{costIndex}].type", warnings, log);
+            NormalizeAmount(cost, $"{path}[{costIndex}].amount", warnings, log);
+        }
+    }
+
+    private static void NormalizeCostType(JsonObject cost, string path, List<string> warnings, Action<string>? log)
+    {
+        var type = GetJsonString(cost, "type");
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return;
+        }
+
+        if (IsSupportedCostType(type))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(GetJsonString(cost, "targetId")))
+        {
+            cost["targetId"] = type;
+            cost["type"] = "stat";
+            AddNormalizationWarning(warnings, log, $"{path}: unsupported direct cost type '{type}' normalized to type=stat,targetId={type}.");
+        }
+    }
+
+    private static bool IsSupportedCostType(string type)
+    {
+        return type.Equals("stat", StringComparison.OrdinalIgnoreCase)
+            || type.Equals("item", StringComparison.OrdinalIgnoreCase)
+            || type.Equals("currency", StringComparison.OrdinalIgnoreCase)
+            || type.Equals("variable", StringComparison.OrdinalIgnoreCase)
+            || type.Equals("cooldown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void NormalizeModifierArray(JsonArray? modifiers, string path, List<string> warnings, Action<string>? log)
+    {
+        if (modifiers == null)
+        {
+            return;
+        }
+
+        for (var modifierIndex = 0; modifierIndex < modifiers.Count; modifierIndex++)
+        {
+            if (modifiers[modifierIndex] is not JsonObject modifier || modifier["amount"] == null)
+            {
+                continue;
+            }
+
+            NormalizeAmount(modifier, $"{path}[{modifierIndex}].amount", warnings, log);
+        }
+    }
+
 
     private static void NormalizeGeneratedActionAmounts(JsonObject root, List<string> warnings, Action<string>? log)
     {

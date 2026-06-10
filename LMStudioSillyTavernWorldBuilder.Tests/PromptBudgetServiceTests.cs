@@ -148,7 +148,21 @@ public sealed class PromptBudgetServiceTests
         Assert.Contains("effects", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Текст эффекта не является state id", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("aspect_border_stability", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(""type": "log"", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"type\": \"log\"", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SpellsPrompt_RequiresSkillsKeyAndSupportedStackModes()
+    {
+        var prompt = Prompts.GenerateSpellsBatch.SystemPrompt;
+
+        Assert.Contains("Top-level JSON key must be skills", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("There is no top-level spells collection", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("kind", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("spell", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stackMode must be one of refresh, stack, ignore, replace", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("BAD: { \"type\": \"will\"", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("GOOD: { \"type\": \"stat\"", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

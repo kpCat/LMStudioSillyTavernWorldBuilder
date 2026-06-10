@@ -879,6 +879,7 @@ random()/dice() используй в основном для эффектов �
 Для стоимости лучше использовать фиксированное Amount или deterministic FormulaId/FormulaExpression. Для рандомной эффективности используй effect.FormulaExpression, например random(1, 4), dice(1, 6), clamp(stat.will + random(1, 4), 0, 100).
 Для actions обязательно заполняй name, kind, description, requirements, costs, effects, cooldownTurns при необходимости и tags. Не создавай полноценную боёвку, врагов, цели или инициативу.
 Для statuses обязательно указывай kind positive/negative/neutral, defaultDurationTurns, maxStacks, stackMode, modifiers или periodicEffects и понятное описание игроку.
+Supported status stackMode values: refresh, stack, ignore, replace. Do not use add/additive/stacking.
 Для progressionNodes обязательно указывай name, description, parentNodeIds, unlockRequirements, unlockCosts, unlockEffects. skillId используй только если такой skill уже есть в compact context.
 Учитывай generationPreferences из compact context: навыки, прокачку, будущую боёвку, баланс, запреты и заметки.
 Прокачка может быть через очки, но не обязана. Для классических очков используй currency или variable вроде skill_points. Для use-based прокачки используй skillExperience effects у actions/skills/items/choices.
@@ -1012,8 +1013,16 @@ LLM генерирует только data-driven draft: worldState, formulas, v
 """, new GenerationSettings(0.45, 0.90, 0.05, 40, 1.05, 0.00, 4500));
 
     public static readonly PromptPreset GenerateSpellsBatch = new("GenerateSpellsBatch", BatchRules + """
-Сгенерируй 3-10 заклинаний как GameSkillDefinition с kind=spell.
-Добавь elements при необходимости. У каждого заклинания укажи elementId, costs, cooldownTurns, effects и useRequirements.
+Сгенерируй 3-10 метамодульных способностей как GameSkillDefinition с kind=spell.
+Top-level JSON key must be skills, not spells. There is no top-level spells collection in GameProjectData.
+BAD: { "spells": [{ "id": "spell_glitch_burst" }] }
+GOOD: { "skills": [{ "id": "spell_glitch_burst", "kind": "spell" }] }
+Это не классическая магия: не делай огненные шары/ледяные стрелы/ману, если только сам сеттинг этого явно не требует. Для текущего мира используй системные вмешательства, метамодульные техники, искажения условий, стабилизацию/дестабилизацию реальности.
+Добавь elements при необходимости. У каждого spell-skill укажи elementId, costs, cooldownTurns, effects и useRequirements.
+Costs must use supported cost schema: type stat/currency/variable/item/cooldown plus targetId. Do not put a stat id directly in type.
+BAD: { "type": "will", "amount": 15 }
+GOOD: { "type": "stat", "targetId": "will", "amount": 15 }
+If you generate statusEffects, stackMode must be one of refresh, stack, ignore, replace. Do not use add.
 """, new GenerationSettings(0.50, 0.90, 0.05, 40, 1.05, 0.00, 4500));
 
     public static readonly PromptPreset GenerateLocationsBatch = new("GenerateLocationsBatch", BatchRules + """

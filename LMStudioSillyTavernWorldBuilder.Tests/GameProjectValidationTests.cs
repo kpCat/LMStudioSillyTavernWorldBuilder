@@ -485,6 +485,70 @@ public sealed class GameProjectValidationTests
     }
 
     [Fact]
+    public void GeneratedSpellsJsonNormalizer_MovesSpellsToSkillsAndNormalizesStatusStackMode()
+    {
+        var raw = """
+        {
+          "elements": [
+            { "id": "element_glitch", "name": "Glitch" }
+          ],
+          "spells": [
+            {
+              "id": "spell_glitch_burst",
+              "name": "Glitch burst",
+              "description": "A controlled system disruption.",
+              "kind": "spell",
+              "elementId": "element_glitch",
+              "costs": [
+                { "type": "will", "amount": 15 },
+                { "type": "variable", "targetId": "metamodule_sync", "amount": "5" }
+              ],
+              "useRequirements": [
+                { "type": "stat", "targetId": "will", "operator": ">=", "value": 20 }
+              ],
+              "effects": [
+                { "type": "status/statusEffect", "targetId": "status_glitch_instability", "amount": 1 }
+              ]
+            }
+          ],
+          "statusEffects": [
+            {
+              "id": "status_glitch_instability",
+              "name": "System glitch",
+              "kind": "negative",
+              "defaultDurationTurns": 3,
+              "maxStacks": 3,
+              "stackMode": "add",
+              "modifiers": [
+                { "type": "stat", "targetId": "will", "amount": "-5" }
+              ]
+            }
+          ]
+        }
+        """;
+        var warnings = new List<string>();
+
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests(raw, warnings);
+        var project = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var result = new GameProjectValidator().Validate(project!);
+
+        Assert.NotNull(project);
+        var skill = Assert.Single(project!.Skills);
+        Assert.Equal("spell_glitch_burst", skill.Id);
+        Assert.Equal("spell", skill.Kind);
+        Assert.Equal("stat", skill.Costs[0].Type);
+        Assert.Equal("will", skill.Costs[0].TargetId);
+        Assert.Equal(15, skill.Costs[0].Amount);
+        Assert.Equal(5, skill.Costs[1].Amount);
+        var status = Assert.Single(project.StatusEffects);
+        Assert.Equal("stack", status.StackMode);
+        Assert.Equal(-5, status.Modifiers[0].Amount);
+        Assert.DoesNotContain(result.Errors, x => x.Contains("StackMode", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, x => x.Contains("moved to skills", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, x => x.Contains("stackMode", StringComparison.OrdinalIgnoreCase) && x.Contains("stack", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void CloneService_PreservesIdentityOnCopyMutableData()
     {
         var target = TestProjects.CreatePlayableProject();
