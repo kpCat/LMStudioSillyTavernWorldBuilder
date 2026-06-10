@@ -119,6 +119,19 @@ public sealed class PromptBudgetServiceTests
     }
 
     [Fact]
+    public void WorldStatePrompt_ForbidsObjectTriggersAndSingularEffect()
+    {
+        var prompt = Prompts.GenerateWorldStateBatch.SystemPrompt;
+
+        Assert.Contains("trigger must be a string", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Allowed trigger strings", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(""trigger": {", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(""trigger": "turnEnd"", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Use effects array", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not output singular effect object", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SerializeWithinBudget_UsesConservativeEstimatorForRussianText()
     {
         var service = new PromptBudgetService();

@@ -214,6 +214,78 @@ public sealed class GameProjectValidationTests
     }
 
     [Fact]
+    public void GeneratedWorldStateJsonNormalizer_AllowsObjectTriggersBeforeDeserialize()
+    {
+        var raw = """
+        {
+          "worldState": {
+            "enabled": true,
+            "genreProfile": "fantasy",
+            "aspects": [
+              {
+                "id": "aspect_border_instability",
+                "name": "Border instability",
+                "stateId": "stable",
+                "states": [
+                  { "id": "stable", "name": "Stable" },
+                  { "id": "fluctuating", "name": "Fluctuating" }
+                ]
+              }
+            ],
+            "ambientEvents": [
+              {
+                "id": "event_border_shimmer",
+                "name": "Border shimmer",
+                "description": "The border shimmers.",
+                "trigger": { "type": "locationState", "targetId": "aspect_border_instability", "operator": "==", "value": "fluctuating" },
+                "probability": 0.3
+              },
+              {
+                "id": "event_sync_whisper",
+                "name": "Sync whisper",
+                "text": "The module whispers.",
+                "trigger": "actionEnd",
+                "chancePercent": 15
+              },
+              {
+                "id": "event_missing_trigger",
+                "name": "Missing trigger",
+                "text": "Something happens."
+              }
+            ],
+            "rules": [
+              {
+                "id": "rule_instability_drain",
+                "name": "Instability drain",
+                "probability": 0.5,
+                "effect": { "type": "stat", "targetId": "stability", "formulaExpression": "-5" }
+              }
+            ]
+          }
+        }
+        """;
+        var warnings = new List<string>();
+
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests(raw, warnings);
+        var project = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(project);
+        var worldState = project!.WorldState;
+        Assert.True(worldState.Enabled);
+        Assert.Equal("stable", Assert.Single(worldState.Aspects).DefaultStateId);
+        Assert.Equal("travel", worldState.AmbientEvents[0].Trigger);
+        Assert.Equal(30, worldState.AmbientEvents[0].ChancePercent);
+        Assert.Equal("The border shimmers.", worldState.AmbientEvents[0].Text);
+        Assert.Equal("action", worldState.AmbientEvents[1].Trigger);
+        Assert.Equal("turnEnd", worldState.AmbientEvents[2].Trigger);
+        Assert.Equal("turnEnd", worldState.Rules[0].Trigger);
+        Assert.Equal(50, worldState.Rules[0].ChancePercent);
+        Assert.Single(worldState.Rules[0].Effects);
+        Assert.Equal("stability", worldState.Rules[0].Effects[0].TargetId);
+        Assert.True(warnings.Count >= 6);
+    }
+
+    [Fact]
     public void CloneService_PreservesIdentityOnCopyMutableData()
     {
         var target = TestProjects.CreatePlayableProject();

@@ -954,6 +954,23 @@ LLM генерирует только data-driven draft: worldState, formulas, v
 Поддержанные requirement/effect types для атмосферы: timeSegment, dayNumber, worldState, worldAspect, advanceTime.
 Для worldState/worldAspect указывай aspect id в TargetId, state id в StringValue.
 
+Жёсткая schema для worldState.ambientEvents:
+- trigger must be a string only, never object.
+- Allowed trigger strings: "turnEnd", "travel", "action". If you think about actionEnd, output "action".
+- BAD: "trigger": { "type": "variable", "targetId": "metamodule_sync" }
+- BAD: "trigger": { "type": "locationState", "targetId": "aspect_border_instability" }
+- GOOD: "trigger": "turnEnd"
+- Use chancePercent integer 0..100, not probability 0.3.
+- Put player-facing event text into text. Description may also be present, but text is required for ambient events.
+- If an event needs conditions, use requirements array with supported requirement fields. Do not put condition object into trigger.
+
+Жёсткая schema для worldState.rules:
+- trigger must be a string only: "turnEnd", "travel", or "action".
+- Use effects array. Do not output singular effect object.
+- BAD: "effect": { "type": "stat", "targetId": "stability" }
+- GOOD: "effects": [{ "type": "stat", "targetId": "stability", "amount": -1 }]
+- Use chancePercent integer 0..100, not probability.
+
 Примеры жанров:
 - fantasy: утро/день/вечер/ночь, погода, сезон, фаза луны, магический фон, слухи, состояние фракций/локаций;
 - space: вахта/цикл, кислород, энергия, тревога, радиация, связь, состояние корабля, экипаж, аварии;

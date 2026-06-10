@@ -1202,9 +1202,26 @@ internal sealed class GameCreationPipelineService
             return json;
         }
 
-        if (root?["actions"] is not JsonArray actions)
+        if (root is not JsonObject rootObject)
         {
             return json;
+        }
+
+        NormalizeGeneratedActionAmounts(rootObject, warnings, log);
+        NormalizeGeneratedWorldState(rootObject, warnings, log);
+
+        return root.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
+    }
+
+    private static void NormalizeGeneratedActionAmounts(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["actions"] is not JsonArray actions)
+        {
+            return;
         }
 
         for (var actionIndex = 0; actionIndex < actions.Count; actionIndex++)
@@ -1217,12 +1234,193 @@ internal sealed class GameCreationPipelineService
             NormalizeAmountArray(action["costs"] as JsonArray, $"$.actions[{actionIndex}].costs", warnings, log);
             NormalizeAmountArray(action["effects"] as JsonArray, $"$.actions[{actionIndex}].effects", warnings, log);
         }
+    }
 
-        return root.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web)
+    private static void NormalizeGeneratedWorldState(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["worldState"] is not JsonObject worldState)
         {
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            WriteIndented = false
-        });
+            return;
+        }
+
+        NormalizeWorldAspects(worldState["aspects"] as JsonArray, warnings, log);
+        NormalizeAmbientEvents(worldState["ambientEvents"] as JsonArray, warnings, log);
+        NormalizeWorldRules(worldState["rules"] as JsonArray, warnings, log);
+    }
+
+    private static void NormalizeWorldAspects(JsonArray? aspects, List<string> warnings, Action<string>? log)
+    {
+        if (aspects == null)
+        {
+            return;
+        }
+
+        for (var aspectIndex = 0; aspectIndex < aspects.Count; aspectIndex++)
+        {
+            if (aspects[aspectIndex] is not JsonObject aspect)
+            {
+                continue;
+            }
+
+            if (aspect["defaultStateId"] == null && aspect["stateId"] is JsonValue stateIdValue && stateIdValue.TryGetValue<string>(out var stateId) && !string.IsNullOrWhiteSpace(stateId))
+            {
+                aspect["defaultStateId"] = stateId;
+                AddNormalizationWarning(warnings, log, $"$.worldState.aspects[{aspectIndex}].stateId: moved to defaultStateId.");
+            }
+        }
+    }
+
+    private static void NormalizeAmbientEvents(JsonArray? ambientEvents, List<string> warnings, Action<string>? log)
+    {
+        if (ambientEvents == null)
+        {
+            return;
+        }
+
+        for (var eventIndex = 0; eventIndex < ambientEvents.Count; eventIndex++)
+        {
+            if (ambientEvents[eventIndex] is not JsonObject ambientEvent)
+            {
+                continue;
+            }
+
+            NormalizeTriggerProperty(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}].trigger", warnings, log);
+            NormalizeProbabilityProperty(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}]", warnings, log);
+            NormalizeAmbientEventText(ambientEvent, eventIndex, warnings, log);
+            NormalizeAmountArray(ambientEvent["effects"] as JsonArray, $"$.worldState.ambientEvents[{eventIndex}].effects", warnings, log);
+        }
+    }
+
+    private static void NormalizeWorldRules(JsonArray? rules, List<string> warnings, Action<string>? log)
+    {
+        if (rules == null)
+        {
+            return;
+        }
+
+        for (var ruleIndex = 0; ruleIndex < rules.Count; ruleIndex++)
+        {
+            if (rules[ruleIndex] is not JsonObject rule)
+            {
+                continue;
+            }
+
+            NormalizeTriggerProperty(rule, $"$.worldState.rules[{ruleIndex}].trigger", warnings, log);
+            NormalizeProbabilityProperty(rule, $"$.worldState.rules[{ruleIndex}]", warnings, log);
+            NormalizeSingularEffect(rule, $"$.worldState.rules[{ruleIndex}]", warnings, log);
+            NormalizeAmountArray(rule["effects"] as JsonArray, $"$.worldState.rules[{ruleIndex}].effects", warnings, log);
+        }
+    }
+
+    private static void NormalizeTriggerProperty(JsonObject owner, string path, List<string> warnings, Action<string>? log)
+    {
+        if (owner["trigger"] is JsonValue value && value.TryGetValue<string>(out var triggerText) && !string.IsNullOrWhiteSpace(triggerText))
+        {
+            var normalized = NormalizeRuntimeTrigger(triggerText, "turnEnd");
+            if (!string.Equals(triggerText, normalized, StringComparison.Ordinal))
+            {
+                owner["trigger"] = normalized;
+                AddNormalizationWarning(warnings, log, $"{path}: unsupported trigger '{triggerText}' normalized to '{normalized}'.");
+            }
+
+            return;
+        }
+
+        if (owner["trigger"] is JsonObject triggerObject)
+        {
+            var normalized = InferRuntimeTriggerFromObject(triggerObject);
+            owner["trigger"] = normalized;
+            AddNormalizationWarning(warnings, log, $"{path}: trigger object was normalized to '{normalized}'.");
+            return;
+        }
+
+        owner["trigger"] = "turnEnd";
+        AddNormalizationWarning(warnings, log, $"{path}: missing or unsupported trigger was normalized to 'turnEnd'.");
+    }
+
+    private static string InferRuntimeTriggerFromObject(JsonObject triggerObject)
+    {
+        var type = GetJsonString(triggerObject, "type");
+        var targetId = GetJsonString(triggerObject, "targetId");
+        var trigger = GetJsonString(triggerObject, "trigger");
+        var combined = string.Join(" ", new[] { type, targetId, trigger }).ToLowerInvariant();
+
+        if (combined.Contains("travel", StringComparison.Ordinal) || combined.Contains("location", StringComparison.Ordinal) || combined.Contains("border", StringComparison.Ordinal))
+        {
+            return "travel";
+        }
+
+        if (combined.Contains("action", StringComparison.Ordinal))
+        {
+            return "action";
+        }
+
+        return "turnEnd";
+    }
+
+    private static string NormalizeRuntimeTrigger(string value, string fallback)
+    {
+        return value.Trim() switch
+        {
+            "turnEnd" => "turnEnd",
+            "travel" => "travel",
+            "action" => "action",
+            "actionEnd" => "action",
+            _ => fallback
+        };
+    }
+
+    private static void NormalizeProbabilityProperty(JsonObject owner, string path, List<string> warnings, Action<string>? log)
+    {
+        if (owner["chancePercent"] != null || owner["probability"] is not JsonValue probabilityValue)
+        {
+            return;
+        }
+
+        if (probabilityValue.TryGetValue<double>(out var probability))
+        {
+            var chance = probability <= 1 ? (int)Math.Round(probability * 100) : (int)Math.Round(probability);
+            chance = Math.Clamp(chance, 0, 100);
+            owner["chancePercent"] = chance;
+            owner.Remove("probability");
+            AddNormalizationWarning(warnings, log, $"{path}.probability: moved to chancePercent={chance}.");
+        }
+    }
+
+    private static void NormalizeAmbientEventText(JsonObject ambientEvent, int eventIndex, List<string> warnings, Action<string>? log)
+    {
+        if (ambientEvent["text"] != null || ambientEvent["description"] is not JsonValue descriptionValue || !descriptionValue.TryGetValue<string>(out var description) || string.IsNullOrWhiteSpace(description))
+        {
+            return;
+        }
+
+        ambientEvent["text"] = description;
+        AddNormalizationWarning(warnings, log, $"$.worldState.ambientEvents[{eventIndex}].description: copied to text.");
+    }
+
+    private static void NormalizeSingularEffect(JsonObject owner, string path, List<string> warnings, Action<string>? log)
+    {
+        if (owner["effect"] is not JsonObject effectObject)
+        {
+            return;
+        }
+
+        if (owner["effects"] is not JsonArray effects)
+        {
+            effects = new JsonArray();
+            owner["effects"] = effects;
+        }
+
+        effects.Add(effectObject.DeepClone());
+        owner.Remove("effect");
+        AddNormalizationWarning(warnings, log, $"{path}.effect: moved to effects[0].");
+    }
+
+    private static string GetJsonString(JsonObject item, string propertyName)
+    {
+        return item[propertyName] is JsonValue value && value.TryGetValue<string>(out var text)
+            ? text
+            : string.Empty;
     }
 
     private static void NormalizeAmountArray(JsonArray? items, string path, List<string> warnings, Action<string>? log)
