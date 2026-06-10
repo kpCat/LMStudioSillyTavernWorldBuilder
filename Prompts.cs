@@ -937,12 +937,18 @@ Use only IDs from compact context. For the current MVP smoke these known IDs are
 Сгенерируй data-driven боёвку v1 как partial GameProjectData JSON. Верни только JSON.
 Все пользовательские тексты пиши на русском языке. Id пиши snake_case латиницей.
 Боёвка должна быть данными, а не кодом: не используй C#, JavaScript, SQL, скрипты или внешние runtime-инструкции.
-Сгенерируй только combat definition, combat encounters, combat actions и формулы для hit/dodge/block/crit/damage.
-Используй combat.Enabled=true, playerHealthStatId и при необходимости default hit/dodge/block/crit formulas.
-Encounter для боя должен иметь combatants: player/ally и enemy, actionIds, stats с health stat, victorySceneId/defeatSceneId при необходимости, onWinEffects для наград.
+Сгенерируй только реальные поля GameProjectData: combat, actions, encounters, formulas.
+Запрещены top-level поля combatActions и combatEncounters. Не используй их никогда.
+Combat actions должны быть обычными actions с availableInCombat=true, actorTeam и targetScope.
+Combat encounters должны быть обычными encounters с kind="combat" и combatants.
+Используй combat.enabled=true, playerHealthStatId и при необходимости defaultHitChanceFormulaExpression/defaultDodgeChanceFormulaExpression/defaultBlockChanceFormulaExpression/defaultCritChanceFormulaExpression.
+Encounter для боя должен иметь combatants: player/ally и enemy, team, isPlayer, actionIds, stats с числовым health, victorySceneId/defeatSceneId при необходимости, onWinEffects для наград.
+Combatant должен использовать team/isPlayer, не role. Не вкладывай actions внутрь combatants; все действия должны быть в top-level actions, а combatants ссылаются на них через actionIds.
 Для урона по участникам боя используй effect type combatDamage. Для лечения участников боя используй combatHeal. Для боевых статусов используй combatStatus.
 Для наград после победы используй encounter.OnWinEffects: playerExperience, skillExperience, item, currency, flag, quest.
-Combat formulas могут использовать actor.<statId> и target.<statId>; например clamp(85 + actor.agility - target.agility, 5, 100).
+Используй только существующие stats из compact context. Для текущего MVP smoke обычно доступны health, will, stamina, stability. Не используй agility, strength, mana, если таких stats нет в compact context. Если сомневаешься, используй will и stamina.
+Combat formulas могут использовать actor.<statId> и target.<statId>; например clamp(85 + actor.will - target.will, 5, 100).
+В effects/costs amount всегда должен быть integer JSON number. Для формул используй formulaId или formulaExpression рядом с amount fallback.
 Не генерируй отдельный движок боя, AI, код, скрипты или баланс-симулятор.
 """, new GenerationSettings(0.45, 0.90, 0.05, 40, 1.05, 0.00, 5000));
 

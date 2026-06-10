@@ -1212,12 +1212,406 @@ internal sealed class GameCreationPipelineService
         NormalizeGeneratedStatusEffects(rootObject, warnings, log);
         NormalizeGeneratedWorldState(rootObject, warnings, log);
         NormalizeGeneratedScenes(rootObject, warnings, log);
+        NormalizeGeneratedCombat(rootObject, warnings, log);
 
-        return root.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        return root.ToJsonString();
+    }
+
+    private static void NormalizeGeneratedCombat(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        var movedCombatActions = MoveLegacyCombatActions(root, warnings, log);
+        var movedCombatEncounters = MoveLegacyCombatEncounters(root, warnings, log);
+        var hasCombatActions = HasJsonArrayItems(root["actions"] as JsonArray, action =>
+            action is JsonObject actionObject && GetJsonBool(actionObject, "availableInCombat"));
+        var hasCombatEncounters = HasJsonArrayItems(root["encounters"] as JsonArray, encounter =>
+            encounter is JsonObject encounterObject
+            && (string.Equals(GetJsonString(encounterObject, "kind"), "combat", StringComparison.OrdinalIgnoreCase)
+                || encounterObject["combatants"] is JsonArray { Count: > 0 }));
+
+        NormalizeCombatDefinition(root["combat"] as JsonObject, warnings, log);
+        NormalizeCombatEncounters(root["encounters"] as JsonArray, warnings, log);
+
+        if ((movedCombatActions > 0 || movedCombatEncounters > 0 || hasCombatActions || hasCombatEncounters)
+            && root["combat"] is not JsonObject)
         {
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            WriteIndented = false
-        });
+            root["combat"] = new JsonObject
+            {
+                ["enabled"] = true,
+                ["playerHealthStatId"] = "health"
+            };
+            AddNormalizationWarning(warnings, log, "$.combat: added enabled combat definition from combat actions/encounters.");
+        }
+
+        var knownStats = GetDeclaredStatIds(root);
+        NormalizeCombatFormulaStrings(root, knownStats, warnings, log);
+    }
+
+    private static int MoveLegacyCombatActions(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["combatActions"] is not JsonArray combatActions)
+        {
+            return 0;
+        }
+
+        var actions = EnsureJsonArray(root, "actions");
+        var moved = 0;
+        for (var index = 0; index < combatActions.Count; index++)
+        {
+            if (combatActions[index] is not JsonObject combatAction)
+            {
+                continue;
+            }
+
+            var action = combatAction.DeepClone().AsObject();
+            NormalizeMovedCombatAction(action, "player", warnings, log, $"$.combatActions[{index}]");
+            actions.Add(action);
+            moved++;
+        }
+
+        root.Remove("combatActions");
+        AddNormalizationWarning(warnings, log, $"$.combatActions: moved {moved} item(s) to $.actions.");
+        return moved;
+    }
+
+    private static int MoveLegacyCombatEncounters(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["combatEncounters"] is not JsonArray combatEncounters)
+        {
+            return 0;
+        }
+
+        var encounters = EnsureJsonArray(root, "encounters");
+        var moved = 0;
+        for (var index = 0; index < combatEncounters.Count; index++)
+        {
+            if (combatEncounters[index] is not JsonObject combatEncounter)
+            {
+                continue;
+            }
+
+            var encounter = combatEncounter.DeepClone().AsObject();
+            if (string.IsNullOrWhiteSpace(GetJsonString(encounter, "kind")))
+            {
+                encounter["kind"] = "combat";
+            }
+
+            encounters.Add(encounter);
+            moved++;
+        }
+
+        root.Remove("combatEncounters");
+        AddNormalizationWarning(warnings, log, $"$.combatEncounters: moved {moved} item(s) to $.encounters.");
+        return moved;
+    }
+
+    private static void NormalizeCombatDefinition(JsonObject? combat, List<string> warnings, Action<string>? log)
+    {
+        if (combat == null)
+        {
+            return;
+        }
+
+        MoveCombatFormulaAlias(combat, "defaultHitFormula", "defaultHitChanceFormulaExpression", warnings, log);
+        MoveCombatFormulaAlias(combat, "defaultDodgeFormula", "defaultDodgeChanceFormulaExpression", warnings, log);
+        MoveCombatFormulaAlias(combat, "defaultBlockFormula", "defaultBlockChanceFormulaExpression", warnings, log);
+        MoveCombatFormulaAlias(combat, "defaultCritFormula", "defaultCritChanceFormulaExpression", warnings, log);
+        if (string.IsNullOrWhiteSpace(GetJsonString(combat, "playerHealthStatId")))
+        {
+            combat["playerHealthStatId"] = "health";
+            AddNormalizationWarning(warnings, log, "$.combat.playerHealthStatId: filled with 'health'.");
+        }
+    }
+
+    private static void MoveCombatFormulaAlias(JsonObject combat, string legacyName, string targetName, List<string> warnings, Action<string>? log)
+    {
+        if (combat[targetName] != null || combat[legacyName] is not JsonValue legacyValue || !legacyValue.TryGetValue<string>(out var formula) || string.IsNullOrWhiteSpace(formula))
+        {
+            return;
+        }
+
+        combat[targetName] = formula;
+        combat.Remove(legacyName);
+        AddNormalizationWarning(warnings, log, $"$.combat.{legacyName}: moved to {targetName}.");
+    }
+
+    private static void NormalizeCombatEncounters(JsonArray? encounters, List<string> warnings, Action<string>? log)
+    {
+        if (encounters == null)
+        {
+            return;
+        }
+
+        var topLevelActions = EnsureJsonArray(GetRootForArrayOwner(encounters), "actions");
+        for (var encounterIndex = 0; encounterIndex < encounters.Count; encounterIndex++)
+        {
+            if (encounters[encounterIndex] is not JsonObject encounter)
+            {
+                continue;
+            }
+
+            if (encounter["combatants"] is JsonArray combatants && combatants.Count > 0 && string.IsNullOrWhiteSpace(GetJsonString(encounter, "kind")))
+            {
+                encounter["kind"] = "combat";
+                AddNormalizationWarning(warnings, log, $"$.encounters[{encounterIndex}].kind: filled with 'combat'.");
+            }
+
+            NormalizeCombatants(encounter["combatants"] as JsonArray, topLevelActions, encounterIndex, warnings, log);
+        }
+    }
+
+    private static void NormalizeCombatants(JsonArray? combatants, JsonArray topLevelActions, int encounterIndex, List<string> warnings, Action<string>? log)
+    {
+        if (combatants == null)
+        {
+            return;
+        }
+
+        for (var combatantIndex = 0; combatantIndex < combatants.Count; combatantIndex++)
+        {
+            if (combatants[combatantIndex] is not JsonObject combatant)
+            {
+                continue;
+            }
+
+            NormalizeCombatantRole(combatant, $"$.encounters[{encounterIndex}].combatants[{combatantIndex}]", warnings, log);
+            NormalizeCombatantStats(combatant, $"$.encounters[{encounterIndex}].combatants[{combatantIndex}]", warnings, log);
+            MoveNestedCombatantActions(combatant, topLevelActions, $"$.encounters[{encounterIndex}].combatants[{combatantIndex}]", warnings, log);
+        }
+    }
+
+    private static void NormalizeCombatantRole(JsonObject combatant, string path, List<string> warnings, Action<string>? log)
+    {
+        var role = GetJsonString(combatant, "role");
+        if (string.IsNullOrWhiteSpace(role) || !string.IsNullOrWhiteSpace(GetJsonString(combatant, "team")))
+        {
+            return;
+        }
+
+        if (string.Equals(role, "player", StringComparison.OrdinalIgnoreCase))
+        {
+            combatant["team"] = "player";
+            combatant["isPlayer"] = true;
+            AddNormalizationWarning(warnings, log, $"{path}.role: normalized player role to team/isPlayer.");
+        }
+        else if (string.Equals(role, "enemy", StringComparison.OrdinalIgnoreCase))
+        {
+            combatant["team"] = "enemy";
+            combatant["isPlayer"] = false;
+            AddNormalizationWarning(warnings, log, $"{path}.role: normalized enemy role to team/isPlayer.");
+        }
+    }
+
+    private static void NormalizeCombatantStats(JsonObject combatant, string path, List<string> warnings, Action<string>? log)
+    {
+        if (combatant["stats"] is not JsonObject stats || stats["health"] is not JsonValue healthValue)
+        {
+            return;
+        }
+
+        if (healthValue.TryGetValue<int>(out _))
+        {
+            return;
+        }
+
+        if (healthValue.TryGetValue<double>(out var doubleValue))
+        {
+            stats["health"] = (int)Math.Round(doubleValue);
+            AddNormalizationWarning(warnings, log, $"{path}.stats.health: numeric value was rounded to integer.");
+            return;
+        }
+
+        if (!healthValue.TryGetValue<string>(out var healthText))
+        {
+            return;
+        }
+
+        if (int.TryParse(healthText, out var parsedHealth))
+        {
+            stats["health"] = parsedHealth;
+            return;
+        }
+
+        if (string.Equals(healthText.Trim(), "stat.health", StringComparison.OrdinalIgnoreCase))
+        {
+            stats["health"] = 100;
+            AddNormalizationWarning(warnings, log, $"{path}.stats.health: stat.health reference normalized to 100.");
+        }
+    }
+
+    private static void MoveNestedCombatantActions(JsonObject combatant, JsonArray topLevelActions, string path, List<string> warnings, Action<string>? log)
+    {
+        if (combatant["actions"] is not JsonArray nestedActions)
+        {
+            return;
+        }
+
+        var actionIds = EnsureJsonArray(combatant, "actionIds");
+        var team = GetJsonString(combatant, "team");
+        var moved = 0;
+        for (var actionIndex = 0; actionIndex < nestedActions.Count; actionIndex++)
+        {
+            if (nestedActions[actionIndex] is not JsonObject nestedAction)
+            {
+                continue;
+            }
+
+            var action = nestedAction.DeepClone().AsObject();
+            NormalizeMovedCombatAction(action, team, warnings, log, $"{path}.actions[{actionIndex}]");
+            var actionId = GetJsonString(action, "id");
+            if (!string.IsNullOrWhiteSpace(actionId) && !JsonArrayContainsString(actionIds, actionId))
+            {
+                actionIds.Add(actionId);
+            }
+
+            topLevelActions.Add(action);
+            moved++;
+        }
+
+        combatant.Remove("actions");
+        AddNormalizationWarning(warnings, log, $"{path}.actions: moved {moved} nested action(s) to $.actions.");
+    }
+
+    private static void NormalizeMovedCombatAction(JsonObject action, string actorTeam, List<string> warnings, Action<string>? log, string path)
+    {
+        action["availableInCombat"] = true;
+        if (string.IsNullOrWhiteSpace(GetJsonString(action, "actorTeam")))
+        {
+            action["actorTeam"] = string.Equals(actorTeam, "enemy", StringComparison.OrdinalIgnoreCase) ? "enemy" : "player";
+            AddNormalizationWarning(warnings, log, $"{path}.actorTeam: filled with '{action["actorTeam"]}'.");
+        }
+        if (string.IsNullOrWhiteSpace(GetJsonString(action, "targetScope")))
+        {
+            action["targetScope"] = "enemy";
+            AddNormalizationWarning(warnings, log, $"{path}.targetScope: filled with '{action["targetScope"]}'.");
+        }
+    }
+
+    private static HashSet<string> GetDeclaredStatIds(JsonObject root)
+    {
+        var stats = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (root["stats"] is JsonArray statArray)
+        {
+            foreach (var stat in statArray.OfType<JsonObject>())
+            {
+                var id = GetJsonString(stat, "id");
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    stats.Add(id);
+                }
+            }
+        }
+
+        return stats;
+    }
+
+    private static void NormalizeCombatFormulaStrings(JsonNode node, HashSet<string> declaredStats, List<string> warnings, Action<string>? log)
+    {
+        if (node is JsonObject jsonObject)
+        {
+            foreach (var property in jsonObject.ToList())
+            {
+                if (property.Value == null)
+                {
+                    continue;
+                }
+
+                if (property.Value is JsonValue value && value.TryGetValue<string>(out var text) && IsCombatFormulaProperty(property.Key, text))
+                {
+                    var normalized = NormalizeUnknownCombatStats(text, declaredStats);
+                    if (!string.Equals(text, normalized, StringComparison.Ordinal))
+                    {
+                        jsonObject[property.Key] = normalized;
+                        AddNormalizationWarning(warnings, log, $"Combat formula property '{property.Key}': unknown agility/strength stats normalized.");
+                    }
+                }
+                else
+                {
+                    NormalizeCombatFormulaStrings(property.Value, declaredStats, warnings, log);
+                }
+            }
+
+            return;
+        }
+
+        if (node is JsonArray jsonArray)
+        {
+            foreach (var item in jsonArray)
+            {
+                if (item != null)
+                {
+                    NormalizeCombatFormulaStrings(item, declaredStats, warnings, log);
+                }
+            }
+        }
+    }
+
+    private static bool IsCombatFormulaProperty(string propertyName, string value)
+    {
+        return propertyName.Contains("formula", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("stat.", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("actor.", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("target.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeUnknownCombatStats(string value, HashSet<string> declaredStats)
+    {
+        var result = value;
+        if (!declaredStats.Contains("agility"))
+        {
+            result = result
+                .Replace("stat.agility", "stat.will", StringComparison.OrdinalIgnoreCase)
+                .Replace("actor.agility", "actor.will", StringComparison.OrdinalIgnoreCase)
+                .Replace("target.agility", "target.will", StringComparison.OrdinalIgnoreCase);
+        }
+        if (!declaredStats.Contains("strength"))
+        {
+            result = result
+                .Replace("stat.strength", "stat.stamina", StringComparison.OrdinalIgnoreCase)
+                .Replace("actor.strength", "actor.stamina", StringComparison.OrdinalIgnoreCase)
+                .Replace("target.strength", "target.stamina", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return result;
+    }
+
+    private static JsonArray EnsureJsonArray(JsonObject owner, string propertyName)
+    {
+        if (owner[propertyName] is JsonArray existing)
+        {
+            return existing;
+        }
+
+        var array = new JsonArray();
+        owner[propertyName] = array;
+        return array;
+    }
+
+    private static JsonObject GetRootForArrayOwner(JsonArray array)
+    {
+        var parent = array.Parent;
+        while (parent?.Parent != null)
+        {
+            parent = parent.Parent;
+        }
+
+        return parent as JsonObject ?? new JsonObject();
+    }
+
+    private static bool GetJsonBool(JsonObject item, string propertyName)
+    {
+        return item[propertyName] is JsonValue value && value.TryGetValue<bool>(out var flag) && flag;
+    }
+
+    private static bool HasJsonArrayItems(JsonArray? array, Func<JsonNode?, bool> predicate)
+    {
+        return array != null && array.Any(predicate);
+    }
+
+    private static bool JsonArrayContainsString(JsonArray array, string value)
+    {
+        return array.Any(item => item is JsonValue jsonValue
+            && jsonValue.TryGetValue<string>(out var text)
+            && string.Equals(text, value, StringComparison.OrdinalIgnoreCase));
     }
 
 

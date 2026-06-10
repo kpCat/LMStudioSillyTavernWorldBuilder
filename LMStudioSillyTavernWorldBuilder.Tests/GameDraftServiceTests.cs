@@ -254,6 +254,191 @@ public sealed class GameDraftServiceTests
         Assert.All(savedDraft.Files, file => Assert.Equal("Applied", file.Status));
     }
 
+    [Fact]
+    public void CombatJsonNormalizer_MovesLegacyCollectionsAndFixesCombatShape()
+    {
+        var raw = """
+        {
+          "stats": [
+            { "id": "health", "name": "Health" },
+            { "id": "will", "name": "Will" },
+            { "id": "stamina", "name": "Stamina" },
+            { "id": "stability", "name": "Stability" }
+          ],
+          "combat": {
+            "enabled": true,
+            "playerHealthStatId": "health",
+            "defaultHitFormula": "clamp(stat.agility * 1.2 + dice(1, 6), 1, 100)",
+            "defaultBlockFormula": "clamp(stat.strength * 0.5, 1, 100)"
+          },
+          "combatActions": [
+            {
+              "id": "combat_strike",
+              "name": "Удар",
+              "kind": "active",
+              "effects": [
+                { "type": "combatDamage", "targetId": "target", "amount": 0 }
+              ]
+            }
+          ],
+          "combatEncounters": [
+            {
+              "id": "encounter_glitch",
+              "name": "Схватка",
+              "sceneId": "scene_start",
+              "combatants": [
+                {
+                  "id": "player",
+                  "name": "Носитель",
+                  "role": "player",
+                  "stats": { "health": "stat.health" }
+                },
+                {
+                  "id": "enemy_glitch",
+                  "name": "Искажение",
+                  "role": "enemy",
+                  "stats": { "health": 45 },
+                  "actions": [
+                    {
+                      "id": "enemy_glitch_attack",
+                      "name": "Искажающий удар",
+                      "effects": [
+                        { "type": "combatDamage", "targetId": "actor", "amount": 5 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        """;
+        var warnings = new List<string>();
+
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests(raw, warnings);
+        var project = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(project);
+        Assert.Equal(2, project!.Actions.Count);
+        Assert.All(project.Actions, action => Assert.True(action.AvailableInCombat));
+        Assert.All(project.Actions, action => Assert.Equal("enemy", action.TargetScope));
+        Assert.Contains(project.Actions, action => action.Id == "enemy_glitch_attack" && action.ActorTeam == "enemy");
+        var encounter = Assert.Single(project.Encounters);
+        Assert.Equal("combat", encounter.Kind);
+        var player = Assert.Single(encounter.Combatants, x => x.Id == "player");
+        Assert.Equal("player", player.Team);
+        Assert.True(player.IsPlayer);
+        Assert.Equal(100, player.Stats["health"]);
+        var enemy = Assert.Single(encounter.Combatants, x => x.Id == "enemy_glitch");
+        Assert.Equal("enemy", enemy.Team);
+        Assert.False(enemy.IsPlayer);
+        Assert.Contains("enemy_glitch_attack", enemy.ActionIds);
+        Assert.Equal("clamp(stat.will * 1.2 + dice(1, 6), 1, 100)", project.Combat!.DefaultHitChanceFormulaExpression);
+        Assert.Equal("clamp(stat.stamina * 0.5, 1, 100)", project.Combat.DefaultBlockChanceFormulaExpression);
+        Assert.DoesNotContain("combatActions", normalized);
+        Assert.DoesNotContain("combatEncounters", normalized);
+        Assert.Contains(warnings, x => x.Contains("combatActions", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, x => x.Contains("stat.health", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CombatPrompt_ProhibitsLegacyCombatCollections()
+    {
+        var prompt = Prompts.GenerateCombatBatch.SystemPrompt;
+
+        Assert.Contains("combatActions", prompt);
+        Assert.Contains("combatEncounters", prompt);
+        Assert.Contains("Запрещены", prompt);
+        Assert.Contains("actions", prompt);
+        Assert.Contains("encounters", prompt);
+        Assert.Contains("availableInCombat=true", prompt);
+    }
+
+    [Fact]
+    public async Task ApplyDraft_CombatEntity_AppliesCombatDefinition()
+    {
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = TestPaths.CreateTempDirectory();
+        var draftFolder = Path.Combine(project.Summary.ProjectPath, "drafts", "draft_combat", "combat");
+        Directory.CreateDirectory(draftFolder);
+        var combatPath = Path.Combine(draftFolder, "combat.json");
+        await File.WriteAllTextAsync(combatPath, JsonSerializer.Serialize(
+            new GameCombatDefinition { Enabled = true, PlayerHealthStatId = "health", MaxRounds = 12 },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var draft = new GameDraftSession
+        {
+            SessionId = "draft_combat",
+            Stage = "combat",
+            Validation = { IsValid = true },
+            Files = { CreateDraftFile(project, "combat", "combat", combatPath) }
+        };
+
+        await new GameDraftService().ApplyDraftAsync(project, draft, CancellationToken.None);
+
+        Assert.NotNull(project.Combat);
+        Assert.True(project.Combat!.Enabled);
+        Assert.Equal("health", project.Combat.PlayerHealthStatId);
+        Assert.Equal(12, project.Combat.MaxRounds);
+        Assert.All(draft.Files, file => Assert.Equal("Applied", file.Status));
+    }
+
+    [Fact]
+    public async Task ApplyDraft_NormalizedCombatDraft_SatisfiesMvpCombatStage()
+    {
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = TestPaths.CreateTempDirectory();
+        project.DesignProfile.InitialIdea = "игра с боевыми схватками";
+        project.Stats.Add(new GameStatDefinition { Id = "health", Name = "Health", InitialValue = 100, IsResource = true });
+        project.Stats.Add(new GameStatDefinition { Id = "stamina", Name = "Stamina", InitialValue = 10 });
+        project.Stats.Add(new GameStatDefinition { Id = "stability", Name = "Stability", InitialValue = 10 });
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests("""
+        {
+          "combat": { "enabled": true, "playerHealthStatId": "health" },
+          "combatActions": [
+            { "id": "combat_strike", "name": "Удар", "effects": [ { "type": "combatDamage", "targetId": "target", "amount": 6 } ] }
+          ],
+          "combatEncounters": [
+            {
+              "id": "encounter_glitch",
+              "name": "Схватка",
+              "kind": "combat",
+              "sceneId": "scene_start",
+              "combatants": [
+                { "id": "player", "name": "Игрок", "role": "player", "stats": { "health": "stat.health" }, "actionIds": ["combat_strike"] },
+                { "id": "enemy_glitch", "name": "Искажение", "role": "enemy", "stats": { "health": 20 } }
+              ]
+            }
+          ]
+        }
+        """, new List<string>());
+        var generated = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            ?? throw new InvalidOperationException("Generated combat JSON is empty.");
+        var draftFolder = Path.Combine(project.Summary.ProjectPath, "drafts", "draft_combat_pipeline");
+        Directory.CreateDirectory(draftFolder);
+        var combatPath = await WriteDraftEntityAsync(draftFolder, "combat", "combat", generated.Combat!);
+        var actionPath = await WriteDraftEntityAsync(draftFolder, "actions", generated.Actions[0].Id, generated.Actions[0]);
+        var encounterPath = await WriteDraftEntityAsync(draftFolder, "encounters", generated.Encounters[0].Id, generated.Encounters[0]);
+        var draft = new GameDraftSession
+        {
+            SessionId = "draft_combat_pipeline",
+            Stage = "combat",
+            Validation = { IsValid = true },
+            Files =
+            {
+                CreateDraftFile(project, "combat", "combat", combatPath),
+                CreateDraftFile(project, "actions", generated.Actions[0].Id, actionPath),
+                CreateDraftFile(project, "encounters", generated.Encounters[0].Id, encounterPath)
+            }
+        };
+
+        await new GameDraftService().ApplyDraftAsync(project, draft, CancellationToken.None);
+
+        var report = new GameMvpOrchestratorService().BuildReadinessReport(project);
+        var combatStage = Assert.Single(report.Stages, x => x.Stage == "combat");
+        Assert.True(combatStage.IsSatisfied);
+        Assert.NotEqual("combat", report.NextRecommendedStage);
+    }
+
     private static GameDraftFile CreateDraftFile(GameProjectData project, string entityType, string entityId, string path)
     {
         return new GameDraftFile
@@ -262,5 +447,14 @@ public sealed class GameDraftServiceTests
             EntityId = entityId,
             RelativePath = Path.GetRelativePath(project.Summary.ProjectPath, path).Replace('\\', '/')
         };
+    }
+
+    private static async Task<string> WriteDraftEntityAsync<T>(string draftFolder, string entityType, string entityId, T value)
+    {
+        var folder = Path.Combine(draftFolder, entityType);
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, entityId + ".json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(value, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        return path;
     }
 }

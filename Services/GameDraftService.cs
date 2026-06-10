@@ -279,6 +279,9 @@ internal sealed class GameDraftService
             case "mechanics":
                 target.Mechanics = await ReadJsonAsync<GameMechanicsDefinition>(path, token);
                 break;
+            case "combat":
+                target.Combat = await ReadJsonAsync<GameCombatDefinition>(path, token);
+                break;
             case "generation-preferences":
                 target.GenerationPreferences = await ReadJsonAsync<GameGenerationPreferences>(path, token);
                 break;
@@ -366,6 +369,7 @@ internal sealed class GameDraftService
         foreach (var item in generated.ProgressionNodes) await WriteDraftEntityAsync(project, draft, folder, "progression", item.Id, item, token);
         if (HasWorldStateData(generated.WorldState)) await WriteDraftEntityAsync(project, draft, folder, "world-state", "world-state", generated.WorldState, token);
         if (HasMechanicsData(generated.Mechanics)) await WriteDraftEntityAsync(project, draft, folder, "mechanics", "mechanics", generated.Mechanics, token);
+        if (generated.Combat != null) await WriteDraftEntityAsync(project, draft, folder, "combat", "combat", generated.Combat, token);
         if (HasGenerationPreferencesData(generated.GenerationPreferences)) await WriteDraftEntityAsync(project, draft, folder, "generation-preferences", "generation-preferences", generated.GenerationPreferences, token);
         foreach (var item in generated.ImagePrompts) await WriteDraftEntityAsync(project, draft, folder, "image-prompts", item.AssetId, item, token);
     }

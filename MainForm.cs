@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Providers;
@@ -34,6 +35,11 @@ public partial class MainForm : Form
     private readonly GameCreationPipelineService _pipelineService;
     private readonly ExternalToolOrchestratorService _orchestratorService;
     private readonly IdeaDiscussionSession _discussionSession = new();
+    private static readonly JsonSerializerOptions UiJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private GameProjectData? _currentProject;
@@ -592,6 +598,13 @@ public partial class MainForm : Form
             return;
         }
 
+        var structuredPrompt = GetStructuredDiscussionPrompt(button);
+        if (structuredPrompt != null)
+        {
+            await SendDiscussionTextAsync(structuredPrompt);
+            return;
+        }
+
         var text = button.Text switch
         {
             "Уточнить жанр" => "Уточни жанр, тон, темп и аудиторию будущей текстовой игры. Предложи 2-3 направления.",
@@ -603,6 +616,36 @@ public partial class MainForm : Form
         };
 
         await SendDiscussionTextAsync(text);
+    }
+
+    private string? GetStructuredDiscussionPrompt(Button button)
+    {
+        if (ReferenceEquals(button, btnAskGenre))
+        {
+            return "Уточни жанр, тон, темп и аудиторию будущей текстовой игры. Предложи 2-3 направления.";
+        }
+
+        if (ReferenceEquals(button, btnAskWorld))
+        {
+            return "Уточни мир, лор, конфликт, локации и ограничения сеттинга.";
+        }
+
+        if (ReferenceEquals(button, btnAskHero))
+        {
+            return "Уточни роль игрока, героя, стартовую ситуацию и личную мотивацию.";
+        }
+
+        if (ReferenceEquals(button, btnAskMechanics))
+        {
+            return "Уточни игровые механики: статы, навыки, инвентарь, выборы, отношения, боевку и прогрессию.";
+        }
+
+        if (ReferenceEquals(button, btnAskVisualStyle))
+        {
+            return "Уточни визуальный стиль иллюстраций для Fooocus: жанр изображения, цвет, композицию, запреты.";
+        }
+
+        return null;
     }
 
     private async void btnBuildBrief_Click(object? sender, EventArgs e)
@@ -906,16 +949,19 @@ public partial class MainForm : Form
                 MessageBox.Show(this, "Draft содержит ошибки валидации и не будет применён.", "Draft", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            var confirmation = BuildDraftConfirmationText("Будет применён draft:", draft) + Environment.NewLine + "Применить?";
+            var confirmation = BuildDraftConfirmationText("Будет применён draft:", project, draft) + Environment.NewLine + "Применить?";
             if (MessageBox.Show(this, confirmation, "Draft", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             {
                 return;
             }
 
             SetStatus(AppWorkflowStatus.Saving);
+            var beforeCombat = BuildCombatImpactSnapshot(project);
             await _draftService.ApplyDraftAsync(project, draft, CurrentOperationToken);
+            var afterCombat = BuildCombatImpactSnapshot(project);
             await _storageService.SaveProjectAsync(GetGamesRoot(), project, CurrentOperationToken);
             AppendLog("Draft применён: " + draft.SessionId);
+            AppendLog(BuildCombatApplyImpactText(draft, beforeCombat, afterCombat));
             RefreshAllViews();
             await RefreshPipelineDraftInfoAsync();
         }, AppWorkflowStatus.Idle);
@@ -1039,7 +1085,7 @@ public partial class MainForm : Form
     private void lvPrompts_SelectedIndexChanged(object? sender, EventArgs e)
     {
         var prompt = GetSelectedPrompt();
-        txtPromptDetails.Text = prompt == null ? "" : JsonSerializer.Serialize(prompt, _jsonOptions);
+        txtPromptDetails.Text = prompt == null ? "" : JsonSerializer.Serialize(prompt, UiJsonOptions);
     }
 
     private void btnNewRun_Click(object? sender, EventArgs e)
@@ -1491,13 +1537,13 @@ public partial class MainForm : Form
     private void RefreshContentViews()
     {
         if (_currentProject == null) return;
-        txtWorld.Text = JsonSerializer.Serialize(_currentProject.World, _jsonOptions);
+        txtWorld.Text = JsonSerializer.Serialize(_currentProject.World, UiJsonOptions);
         FillList(lvCharacters, _currentProject.Characters.Select(x => (x.Id, x.Name, x.Description)));
         FillList(lvScenes, _currentProject.Scenes.Select(x => (x.Id, x.Title, x.Text)));
         FillList(lvItems, _currentProject.Items.Select(x => (x.Id, x.Name, x.Description)));
         FillList(lvStats, _currentProject.Stats.Select(x => (x.Id, x.Name, x.Description)));
         FillList(lvRelationships, _currentProject.Relationships.Select(x => (x.CharacterId, x.Name, x.InitialValue.ToString())));
-        txtCombat.Text = JsonSerializer.Serialize(_currentProject.Combat, _jsonOptions);
+        txtCombat.Text = JsonSerializer.Serialize(_currentProject.Combat, UiJsonOptions);
     }
 
     private void RefreshGenerationPreferencesView()
@@ -1682,6 +1728,138 @@ public partial class MainForm : Form
             + "Файлов: " + draft.Files.Count + Environment.NewLine
             + "Ошибок: " + draft.Validation.Errors.Count + ", предупреждений: " + draft.Validation.Warnings.Count + Environment.NewLine;
     }
+
+    private string BuildDraftConfirmationText(string title, GameProjectData project, GameDraftSession draft)
+    {
+        return BuildDraftConfirmationText(title, draft)
+            + BuildDraftApplySummary(project, draft);
+    }
+
+    private string BuildDraftApplySummary(GameProjectData project, GameDraftSession draft)
+    {
+        var summary = ReadDraftCombatSummary(project, draft);
+        var builder = new StringBuilder();
+        builder.AppendLine();
+        builder.AppendLine("Draft stage: " + draft.Stage);
+        builder.AppendLine("Will add/update:");
+        builder.AppendLine("- combat.enabled: " + (summary.CombatEnabled?.ToString().ToLowerInvariant() ?? "нет данных"));
+        builder.AppendLine("- actions: +" + summary.Actions);
+        builder.AppendLine("- availableInCombat actions: +" + summary.CombatActions);
+        builder.AppendLine("- encounters: +" + summary.Encounters);
+        builder.AppendLine("- combatants: +" + summary.Combatants);
+        if (draft.Validation.Warnings.Count > 0 || summary.Warnings.Count > 0)
+        {
+            builder.AppendLine("Warnings:");
+            foreach (var warning in draft.Validation.Warnings.Concat(summary.Warnings).Take(8))
+            {
+                builder.AppendLine("- " + warning);
+            }
+            if (draft.Validation.Warnings.Count + summary.Warnings.Count > 8)
+            {
+                builder.AppendLine("- ... ещё " + (draft.Validation.Warnings.Count + summary.Warnings.Count - 8));
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private DraftCombatSummary ReadDraftCombatSummary(GameProjectData project, GameDraftSession draft)
+    {
+        var summary = new DraftCombatSummary();
+        foreach (var file in draft.Files)
+        {
+            var path = Path.Combine(project.Summary.ProjectPath, file.RelativePath);
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                switch (file.EntityType)
+                {
+                    case "combat":
+                        var combat = JsonSerializer.Deserialize<GameCombatDefinition>(File.ReadAllText(path), _jsonOptions);
+                        summary.CombatEnabled = combat?.Enabled;
+                        break;
+                    case "actions":
+                        summary.Actions++;
+                        var action = JsonSerializer.Deserialize<GameActionDefinition>(File.ReadAllText(path), _jsonOptions);
+                        if (action?.AvailableInCombat == true)
+                        {
+                            summary.CombatActions++;
+                        }
+                        break;
+                    case "encounters":
+                        summary.Encounters++;
+                        var encounter = JsonSerializer.Deserialize<GameEncounterDefinition>(File.ReadAllText(path), _jsonOptions);
+                        if (encounter != null)
+                        {
+                            summary.Combatants += encounter.Combatants.Count;
+                        }
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                summary.Warnings.Add(file.EntityType + "/" + file.EntityId + ": не удалось прочитать summary (" + ex.Message + ")");
+            }
+        }
+
+        return summary;
+    }
+
+    private static CombatImpactSnapshot BuildCombatImpactSnapshot(GameProjectData project)
+    {
+        return new CombatImpactSnapshot(
+            project.Combat?.Enabled == true,
+            project.Actions.Count,
+            project.Actions.Count(x => x.AvailableInCombat),
+            project.Encounters.Count,
+            project.Encounters.Count(x => string.Equals(x.Kind, "combat", StringComparison.OrdinalIgnoreCase) || x.Combatants.Count > 0),
+            project.Encounters.SelectMany(x => x.Combatants).Count());
+    }
+
+    private static string BuildCombatApplyImpactText(GameDraftSession draft, CombatImpactSnapshot before, CombatImpactSnapshot after)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Impact: actions +" + Math.Max(0, after.Actions - before.Actions)
+            + ", combatActions +" + Math.Max(0, after.CombatActions - before.CombatActions)
+            + ", encounters +" + Math.Max(0, after.Encounters - before.Encounters)
+            + ", combat.enabled=" + after.CombatEnabled.ToString().ToLowerInvariant());
+        builder.AppendLine("Impact details: combat encounters " + before.CombatEncounters + " -> " + after.CombatEncounters
+            + ", combatants " + before.Combatants + " -> " + after.Combatants + ".");
+
+        if (string.Equals(draft.Stage, "combat", StringComparison.OrdinalIgnoreCase))
+        {
+            var satisfied = after.CombatEnabled || after.CombatActions > 0 || after.CombatEncounters > 0;
+            builder.AppendLine("MVP stage combat: " + (satisfied ? "satisfied" : "not satisfied"));
+            if (!satisfied)
+            {
+                builder.AppendLine("Applied combat draft did not satisfy combat stage: no combat.enabled, no availableInCombat actions, no combat encounters.");
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private sealed class DraftCombatSummary
+    {
+        public bool? CombatEnabled { get; set; }
+        public int Actions { get; set; }
+        public int CombatActions { get; set; }
+        public int Encounters { get; set; }
+        public int Combatants { get; set; }
+        public List<string> Warnings { get; } = new();
+    }
+
+    private sealed record CombatImpactSnapshot(
+        bool CombatEnabled,
+        int Actions,
+        int CombatActions,
+        int Encounters,
+        int CombatEncounters,
+        int Combatants);
 
     private void RefreshRuntimeViews()
     {
