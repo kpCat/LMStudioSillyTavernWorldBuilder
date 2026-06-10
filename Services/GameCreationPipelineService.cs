@@ -16,6 +16,8 @@ internal sealed class GameCreationPipelineService
     private readonly GameDraftService _draftService = new();
     private readonly PromptBudgetService _promptBudgetService = new();
     private readonly GameDesignInterviewService _designInterviewService = new();
+    private readonly GameDesignKnowledgeBaseService _designKnowledgeBaseService = new();
+    private readonly GameDesignConversationService _designConversationService = new();
     private readonly GameRandomDirectorService _randomDirectorService = new();
     private readonly GameChangeRequestService _changeRequestService = new();
     private readonly GameBalanceSimulatorService _balanceSimulatorService = new();
@@ -266,6 +268,40 @@ internal sealed class GameCreationPipelineService
 
         await SaveStageTextAsync(project, $"change-request_{DateTime.Now:yyyyMMdd_HHmmss}.json.txt", text, cancellationToken);
         return text;
+    }
+
+    public async Task<string> ProcessDesignConversationTurnAsync(
+        GameProjectData project,
+        LmStudioSettings settings,
+        string userMessage,
+        string? focusTopic = null,
+        Action<string>? log = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userMessage))
+        {
+            return "Дизайн-диалог: напишите сообщение для обсуждения.";
+        }
+
+        log?.Invoke("Дизайн-диалог: строю компактный контекст и отправляю запрос в LLM.");
+        var userContent = _designConversationService.BuildConversationUserPrompt(project, userMessage, focusTopic);
+        LogContextBudget(log ?? (_ => { }), "design-conversation", userContent);
+        var text = await SendPresetAsync(project, settings, Prompts.GameDesignConversationJson, new[]
+        {
+            new ChatMessage { Role = "system", Content = Prompts.GameDesignConversationJson.SystemPrompt },
+            new ChatMessage { Role = "user", Content = userContent }
+        }, log, "design-conversation", cancellationToken);
+
+        var result = _designConversationService.ParseResult(text);
+        if (!result.IsSuccess)
+        {
+            log?.Invoke("Дизайн-диалог: JSON не разобран, база знаний и история не изменены.");
+            return _designConversationService.FormatRussianReport(result);
+        }
+
+        var savedIds = _designConversationService.ApplyResult(project, result, userMessage, focusTopic);
+        log?.Invoke("Дизайн-диалог: сохранено записей памяти " + savedIds.Count + ".");
+        return _designConversationService.FormatRussianReport(result, savedIds);
     }
 
     public async Task<string> BuildBalanceRebalanceDraftAsync(
@@ -590,6 +626,7 @@ internal sealed class GameCreationPipelineService
             Mvp = Preview(project.MvpPlan.Text, sectionLimit),
             Architecture = Preview(project.ArchitecturePlan.Text, sectionLimit),
             DesignSummary = hardTrimmed ? "trimmed" : Preview(_designInterviewService.BuildDesignSummary(project), sectionLimit),
+            DesignKnowledgeSummary = hardTrimmed ? "trimmed" : BuildDesignKnowledgeSummary(project, stage, Math.Min(900, sectionLimit)),
             RandomDirectorSummary = hardTrimmed
                 ? "trimmed"
                 : JsonSerializer.Deserialize<object>(_randomDirectorService.BuildCompactRandomDirectorSummary(project, randomDirectorReport)),
@@ -710,6 +747,28 @@ internal sealed class GameCreationPipelineService
             ForbiddenDesignText = Preview(preferences.ForbiddenDesignText, maxLength),
             Notes = Preview(preferences.Notes, maxLength)
         };
+    }
+
+    private string BuildDesignKnowledgeSummary(GameProjectData project, string stage, int maxCharacters)
+    {
+        var query = new GameDesignKnowledgeQuery
+        {
+            IncludeStatuses = { GameDesignKnowledgeEntryStatus.Accepted },
+            IncludeKinds =
+            {
+                GameDesignKnowledgeEntryKind.Constraint,
+                GameDesignKnowledgeEntryKind.Preference,
+                GameDesignKnowledgeEntryKind.Decision
+            }
+        };
+
+        if (!string.IsNullOrWhiteSpace(stage))
+        {
+            query.AffectsSystems.Add(stage);
+            query.Tags.Add(stage);
+        }
+
+        return _designKnowledgeBaseService.BuildCompactSummary(project.DesignKnowledgeBase, query, maxCharacters);
     }
 
     private static object BuildCompactWorldState(GameWorldStateDefinition worldState, int itemLimit)

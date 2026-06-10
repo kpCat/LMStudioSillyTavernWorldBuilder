@@ -58,6 +58,8 @@ public sealed class GameProjectData
     public GameGenerationPreferences GenerationPreferences { get; set; } = new();
     public GameDesignProfile DesignProfile { get; set; } = new();
     public GameCreationPlan CreationPlan { get; set; } = new();
+    public GameDesignKnowledgeBase DesignKnowledgeBase { get; set; } = new();
+    public GameDesignConversationHistory DesignConversationHistory { get; set; } = new();
 }
 
 public sealed class GameGenerationPreferences

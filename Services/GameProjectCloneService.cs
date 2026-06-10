@@ -63,6 +63,8 @@ internal sealed class GameProjectCloneService
         target.GenerationPreferences = copy.GenerationPreferences;
         target.DesignProfile = copy.DesignProfile;
         target.CreationPlan = copy.CreationPlan;
+        target.DesignKnowledgeBase = copy.DesignKnowledgeBase;
+        target.DesignConversationHistory = copy.DesignConversationHistory;
 
         target.Summary.Id = summaryId;
         target.Summary.ProjectPath = summaryProjectPath;

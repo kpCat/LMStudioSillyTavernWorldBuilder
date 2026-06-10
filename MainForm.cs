@@ -280,6 +280,32 @@ public partial class MainForm : Form
         }, AppWorkflowStatus.Idle);
     }
 
+    private async void btnDesignConversationSend_Click(object? sender, EventArgs e)
+    {
+        await EnsureProjectThenRunAsync(async project =>
+        {
+            var message = txtDesignConversation.Text.Trim();
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                MessageBox.Show(this, "Напишите сообщение для дизайн-диалога.", "Дизайн-диалог", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            SetStatus(AppWorkflowStatus.GeneratingContent);
+            var report = await _pipelineService.ProcessDesignConversationTurnAsync(
+                project,
+                GetLmSettingsForPurpose("review"),
+                message,
+                txtDesignConversationFocus.Text,
+                AppendLog,
+                CurrentOperationToken);
+            txtDesignPreview.Text = report;
+            RefreshDesignBrainView();
+            await _storageService.SaveProjectAsync(GetGamesRoot(), project, CurrentOperationToken);
+            AppendLog("Дизайн-диалог обработан и сохранён.");
+        }, AppWorkflowStatus.Idle);
+    }
+
     private void btnBalanceCheck_Click(object? sender, EventArgs e)
     {
         if (_currentProject == null)
@@ -2138,6 +2164,9 @@ public partial class MainForm : Form
         btnChangeRequestAnalyze.Enabled = !busy;
         btnChangeRequestGenerate.Enabled = !busy;
         txtChangeRequest.Enabled = !busy;
+        btnDesignConversationSend.Enabled = !busy;
+        txtDesignConversation.Enabled = !busy;
+        txtDesignConversationFocus.Enabled = !busy;
         btnBalanceCheck.Enabled = !busy;
         btnBalanceGenerateDraft.Enabled = !busy;
         txtBalanceSimulationRuns.Enabled = !busy;

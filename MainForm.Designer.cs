@@ -88,6 +88,11 @@ partial class MainForm
     private TextBox txtChangeRequest = null!;
     private Button btnChangeRequestAnalyze = null!;
     private Button btnChangeRequestGenerate = null!;
+    private Label lblDesignConversation = null!;
+    private TextBox txtDesignConversation = null!;
+    private Label lblDesignConversationFocus = null!;
+    private TextBox txtDesignConversationFocus = null!;
+    private Button btnDesignConversationSend = null!;
     private SplitContainer gameCrafterSplit = null!;
     private TableLayoutPanel gameCrafterLeftLayout = null!;
     private ListView lvDesignSlots = null!;
@@ -342,6 +347,11 @@ partial class MainForm
         txtChangeRequest = new TextBox();
         btnChangeRequestAnalyze = new Button();
         btnChangeRequestGenerate = new Button();
+        lblDesignConversation = new Label();
+        txtDesignConversation = new TextBox();
+        lblDesignConversationFocus = new Label();
+        txtDesignConversationFocus = new TextBox();
+        btnDesignConversationSend = new Button();
         gameCrafterSplit = new SplitContainer();
         gameCrafterLeftLayout = new TableLayoutPanel();
         lvDesignSlots = new ListView();
@@ -1066,7 +1076,7 @@ partial class MainForm
         gameCrafterLayout.Location = new Point(0, 0);
         gameCrafterLayout.Name = "gameCrafterLayout";
         gameCrafterLayout.RowCount = 3;
-        gameCrafterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 196F));
+        gameCrafterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 292F));
         gameCrafterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76F));
         gameCrafterLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         gameCrafterLayout.Size = new Size(1266, 762);
@@ -1087,14 +1097,19 @@ partial class MainForm
         gameCrafterTopLayout.Location = new Point(3, 3);
         gameCrafterTopLayout.Name = "gameCrafterTopLayout";
         gameCrafterTopLayout.Padding = new Padding(8);
-        gameCrafterTopLayout.RowCount = 2;
+        gameCrafterTopLayout.RowCount = 3;
         gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 98F));
+        gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 86F));
         gameCrafterTopLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         gameCrafterTopLayout.Controls.Add(lblChangeRequest, 0, 1);
         gameCrafterTopLayout.Controls.Add(txtChangeRequest, 1, 1);
         gameCrafterTopLayout.Controls.Add(btnChangeRequestAnalyze, 2, 1);
         gameCrafterTopLayout.Controls.Add(btnChangeRequestGenerate, 3, 1);
-        gameCrafterTopLayout.Size = new Size(1260, 190);
+        gameCrafterTopLayout.Controls.Add(lblDesignConversation, 0, 2);
+        gameCrafterTopLayout.Controls.Add(txtDesignConversation, 1, 2);
+        gameCrafterTopLayout.Controls.Add(lblDesignConversationFocus, 2, 2);
+        gameCrafterTopLayout.Controls.Add(txtDesignConversationFocus, 3, 2);
+        gameCrafterTopLayout.Size = new Size(1260, 286);
         gameCrafterTopLayout.TabIndex = 0;
         // 
         // lblGameCrafterIdea
@@ -1179,6 +1194,45 @@ partial class MainForm
         btnChangeRequestGenerate.Text = "Сгенерировать draft правки";
         btnChangeRequestGenerate.Click += btnChangeRequestGenerate_Click;
         // 
+        // lblDesignConversation
+        // 
+        lblDesignConversation.Dock = DockStyle.Fill;
+        lblDesignConversation.Location = new Point(11, 192);
+        lblDesignConversation.Name = "lblDesignConversation";
+        lblDesignConversation.Size = new Size(114, 86);
+        lblDesignConversation.TabIndex = 8;
+        lblDesignConversation.Text = "Дизайн-диалог:";
+        lblDesignConversation.TextAlign = ContentAlignment.MiddleLeft;
+        // 
+        // txtDesignConversation
+        // 
+        txtDesignConversation.Dock = DockStyle.Fill;
+        txtDesignConversation.Font = new Font("Consolas", 10F);
+        txtDesignConversation.Location = new Point(131, 195);
+        txtDesignConversation.Multiline = true;
+        txtDesignConversation.Name = "txtDesignConversation";
+        txtDesignConversation.ScrollBars = ScrollBars.Vertical;
+        txtDesignConversation.Size = new Size(769, 80);
+        txtDesignConversation.TabIndex = 9;
+        // 
+        // lblDesignConversationFocus
+        // 
+        lblDesignConversationFocus.Dock = DockStyle.Fill;
+        lblDesignConversationFocus.Location = new Point(906, 192);
+        lblDesignConversationFocus.Name = "lblDesignConversationFocus";
+        lblDesignConversationFocus.Size = new Size(214, 86);
+        lblDesignConversationFocus.TabIndex = 10;
+        lblDesignConversationFocus.Text = "Фокус/категория:";
+        lblDesignConversationFocus.TextAlign = ContentAlignment.MiddleLeft;
+        // 
+        // txtDesignConversationFocus
+        // 
+        txtDesignConversationFocus.Dock = DockStyle.Top;
+        txtDesignConversationFocus.Location = new Point(1126, 195);
+        txtDesignConversationFocus.Name = "txtDesignConversationFocus";
+        txtDesignConversationFocus.Size = new Size(253, 23);
+        txtDesignConversationFocus.TabIndex = 11;
+        // 
         // gameCrafterButtons
         // 
         gameCrafterButtons.Controls.Add(btnDesignApplyIdea);
@@ -1196,8 +1250,9 @@ partial class MainForm
         gameCrafterButtons.Controls.Add(btnBalanceGenerateDraft);
         gameCrafterButtons.Controls.Add(btnMvpCheck);
         gameCrafterButtons.Controls.Add(btnMvpGenerateNextDraft);
+        gameCrafterButtons.Controls.Add(btnDesignConversationSend);
         gameCrafterButtons.Dock = DockStyle.Fill;
-        gameCrafterButtons.Location = new Point(3, 199);
+        gameCrafterButtons.Location = new Point(3, 295);
         gameCrafterButtons.Name = "gameCrafterButtons";
         gameCrafterButtons.Padding = new Padding(8, 5, 8, 5);
         gameCrafterButtons.Size = new Size(1260, 70);
@@ -1338,10 +1393,19 @@ partial class MainForm
         btnMvpGenerateNextDraft.Text = "Сгенерировать следующий draft MVP";
         btnMvpGenerateNextDraft.Click += btnMvpGenerateNextDraft_Click;
         // 
+        // btnDesignConversationSend
+        // 
+        btnDesignConversationSend.Location = new Point(1008, 36);
+        btnDesignConversationSend.Name = "btnDesignConversationSend";
+        btnDesignConversationSend.Size = new Size(220, 25);
+        btnDesignConversationSend.TabIndex = 15;
+        btnDesignConversationSend.Text = "Отправить в дизайн-диалог";
+        btnDesignConversationSend.Click += btnDesignConversationSend_Click;
+        // 
         // gameCrafterSplit
         // 
         gameCrafterSplit.Dock = DockStyle.Fill;
-        gameCrafterSplit.Location = new Point(3, 275);
+        gameCrafterSplit.Location = new Point(3, 371);
         gameCrafterSplit.Name = "gameCrafterSplit";
         // 
         // gameCrafterSplit.Panel1
@@ -1351,7 +1415,7 @@ partial class MainForm
         // gameCrafterSplit.Panel2
         // 
         gameCrafterSplit.Panel2.Controls.Add(txtDesignPreview);
-        gameCrafterSplit.Size = new Size(1260, 484);
+        gameCrafterSplit.Size = new Size(1260, 388);
         gameCrafterSplit.SplitterDistance = 720;
         gameCrafterSplit.TabIndex = 2;
         // 

@@ -466,6 +466,8 @@ internal sealed class GameStorageService
         await WriteTextAsync(Path.Combine(projectFolder, "design", "prompt-plan.md"), project.PromptPlan.Text, cancellationToken);
         await WriteJsonAsync(Path.Combine(projectFolder, "design", "design-profile.json"), project.DesignProfile, cancellationToken);
         await WriteJsonAsync(Path.Combine(projectFolder, "design", "creation-plan.json"), project.CreationPlan, cancellationToken);
+        await WriteJsonAsync(Path.Combine(projectFolder, "design", "knowledge-base.json"), project.DesignKnowledgeBase, cancellationToken);
+        await WriteJsonAsync(Path.Combine(projectFolder, "design", "conversation-history.json"), project.DesignConversationHistory, cancellationToken);
     }
 
     private async Task ReadDesignAsync(string projectFolder, GameProjectData project, CancellationToken cancellationToken)
@@ -486,6 +488,18 @@ internal sealed class GameStorageService
         if (File.Exists(creationPlanPath))
         {
             project.CreationPlan = await ReadJsonAsync<GameCreationPlan>(creationPlanPath, cancellationToken);
+        }
+
+        var knowledgeBasePath = Path.Combine(projectFolder, "design", "knowledge-base.json");
+        if (File.Exists(knowledgeBasePath))
+        {
+            project.DesignKnowledgeBase = await ReadJsonAsync<GameDesignKnowledgeBase>(knowledgeBasePath, cancellationToken);
+        }
+
+        var conversationHistoryPath = Path.Combine(projectFolder, "design", "conversation-history.json");
+        if (File.Exists(conversationHistoryPath))
+        {
+            project.DesignConversationHistory = await ReadJsonAsync<GameDesignConversationHistory>(conversationHistoryPath, cancellationToken);
         }
     }
 
