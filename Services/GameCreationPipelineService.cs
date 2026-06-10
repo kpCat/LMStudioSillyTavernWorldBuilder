@@ -1209,12 +1209,218 @@ internal sealed class GameCreationPipelineService
 
         NormalizeGeneratedActionAmounts(rootObject, warnings, log);
         NormalizeGeneratedWorldState(rootObject, warnings, log);
+        NormalizeGeneratedScenes(rootObject, warnings, log);
 
         return root.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             WriteIndented = false
         });
+    }
+
+
+    private static void NormalizeGeneratedScenes(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["scenes"] is not JsonArray scenes)
+        {
+            return;
+        }
+
+        var generatedSceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var initialSceneCount = scenes.Count;
+        for (var sceneIndex = 0; sceneIndex < initialSceneCount; sceneIndex++)
+        {
+            if (scenes[sceneIndex] is JsonObject scene)
+            {
+                var sceneId = GetJsonString(scene, "id");
+                if (!string.IsNullOrWhiteSpace(sceneId))
+                {
+                    generatedSceneIds.Add(sceneId);
+                }
+            }
+        }
+
+        var syntheticScenes = new Dictionary<string, JsonObject>(StringComparer.OrdinalIgnoreCase);
+        for (var sceneIndex = 0; sceneIndex < initialSceneCount; sceneIndex++)
+        {
+            if (scenes[sceneIndex] is not JsonObject scene)
+            {
+                continue;
+            }
+
+            NormalizeSceneText(scene, sceneIndex, warnings, log);
+            if (scene["choices"] is JsonArray choices)
+            {
+                NormalizeSceneChoices(choices, generatedSceneIds, syntheticScenes, warnings, log);
+            }
+        }
+
+        foreach (var syntheticScene in syntheticScenes.Values)
+        {
+            scenes.Add(syntheticScene);
+        }
+    }
+
+    private static void NormalizeSceneText(JsonObject scene, int sceneIndex, List<string> warnings, Action<string>? log)
+    {
+        if (scene["text"] != null || scene["description"] is not JsonValue descriptionValue || !descriptionValue.TryGetValue<string>(out var description) || string.IsNullOrWhiteSpace(description))
+        {
+            return;
+        }
+
+        scene["text"] = description;
+        AddNormalizationWarning(warnings, log, $"$.scenes[{sceneIndex}].description: copied to text.");
+    }
+
+    private static void NormalizeSceneChoices(JsonArray choices, HashSet<string> generatedSceneIds, Dictionary<string, JsonObject> syntheticScenes, List<string> warnings, Action<string>? log)
+    {
+        for (var choiceIndex = 0; choiceIndex < choices.Count; choiceIndex++)
+        {
+            if (choices[choiceIndex] is not JsonObject choice)
+            {
+                continue;
+            }
+
+            if (choice["conditions"] == null && choice["requirements"] is JsonArray requirements)
+            {
+                choice["conditions"] = requirements.DeepClone();
+                AddNormalizationWarning(warnings, log, $"$.scenes[*].choices[{choiceIndex}].requirements: copied to conditions.");
+            }
+
+            NormalizeConditionArray(choice["conditions"] as JsonArray, $"$.scenes[*].choices[{choiceIndex}].conditions", warnings, log);
+            NormalizeAmountArray(choice["effects"] as JsonArray, $"$.scenes[*].choices[{choiceIndex}].effects", warnings, log);
+            NormalizeSceneChoiceCosts(choice, choiceIndex, warnings, log);
+            NormalizeSceneChoiceNextScene(choice, generatedSceneIds, syntheticScenes, warnings, log);
+        }
+    }
+
+    private static void NormalizeSceneChoiceCosts(JsonObject choice, int choiceIndex, List<string> warnings, Action<string>? log)
+    {
+        if (choice["costs"] is not JsonArray costs || costs.Count == 0)
+        {
+            return;
+        }
+
+        if (choice["effects"] is not JsonArray effects)
+        {
+            effects = new JsonArray();
+            choice["effects"] = effects;
+        }
+
+        NormalizeAmountArray(costs, $"$.scenes[*].choices[{choiceIndex}].costs", warnings, log);
+        for (var costIndex = 0; costIndex < costs.Count; costIndex++)
+        {
+            if (costs[costIndex] is not JsonObject cost)
+            {
+                continue;
+            }
+
+            var effect = cost.DeepClone().AsObject();
+            if (effect["amount"] is JsonValue amountValue && amountValue.TryGetValue<int>(out var amount))
+            {
+                effect["amount"] = amount > 0 ? -amount : amount;
+            }
+            effects.Add(effect);
+            AddNormalizationWarning(warnings, log, $"$.scenes[*].choices[{choiceIndex}].costs[{costIndex}]: copied to effects as negative cost effect.");
+        }
+    }
+
+    private static void NormalizeSceneChoiceNextScene(JsonObject choice, HashSet<string> generatedSceneIds, Dictionary<string, JsonObject> syntheticScenes, List<string> warnings, Action<string>? log)
+    {
+        if (choice["nextSceneId"] is not JsonValue nextSceneValue || !nextSceneValue.TryGetValue<string>(out var nextSceneId) || string.IsNullOrWhiteSpace(nextSceneId))
+        {
+            return;
+        }
+
+        nextSceneId = nextSceneId.Trim();
+        choice["nextSceneId"] = nextSceneId;
+        if (generatedSceneIds.Contains(nextSceneId) || syntheticScenes.ContainsKey(nextSceneId))
+        {
+            return;
+        }
+
+        if (!nextSceneId.StartsWith("location_", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        syntheticScenes[nextSceneId] = new JsonObject
+        {
+            ["id"] = nextSceneId,
+            ["title"] = BuildSceneTitleFromId(nextSceneId),
+            ["locationId"] = nextSceneId,
+            ["text"] = "Вы возвращаетесь в выбранную локацию.",
+            ["choices"] = new JsonArray()
+        };
+        generatedSceneIds.Add(nextSceneId);
+        AddNormalizationWarning(warnings, log, $"$.scenes choices nextSceneId '{nextSceneId}': generated fallback scene for location-like target.");
+    }
+
+    private static string BuildSceneTitleFromId(string sceneId)
+    {
+        var text = sceneId.Trim();
+        if (text.StartsWith("location_", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text["location_".Length..];
+        }
+        if (text.StartsWith("scene_", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text["scene_".Length..];
+        }
+
+        text = text.Replace('_', ' ').Trim();
+        return string.IsNullOrWhiteSpace(text) ? "Переход" : char.ToUpperInvariant(text[0]) + text[1..];
+    }
+
+    private static void NormalizeConditionArray(JsonArray? conditions, string path, List<string> warnings, Action<string>? log)
+    {
+        if (conditions == null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < conditions.Count; index++)
+        {
+            if (conditions[index] is not JsonObject condition || condition["value"] is not JsonValue value)
+            {
+                continue;
+            }
+
+            if (value.TryGetValue<int>(out _))
+            {
+                continue;
+            }
+
+            if (value.TryGetValue<double>(out var doubleValue))
+            {
+                condition["value"] = (int)Math.Round(doubleValue);
+                AddNormalizationWarning(warnings, log, $"{path}[{index}].value: numeric value was rounded to integer.");
+                continue;
+            }
+
+            if (!value.TryGetValue<string>(out var rawValue))
+            {
+                continue;
+            }
+
+            rawValue = rawValue.Trim();
+            if (int.TryParse(rawValue, out var integerValue))
+            {
+                condition["value"] = integerValue;
+                continue;
+            }
+
+            if (double.TryParse(rawValue, out var parsedDoubleValue))
+            {
+                condition["value"] = (int)Math.Round(parsedDoubleValue);
+                AddNormalizationWarning(warnings, log, $"{path}[{index}].value: numeric string value was rounded to integer.");
+                continue;
+            }
+
+            condition["value"] = 0;
+            SetIfEmpty(condition, "text", rawValue);
+            AddNormalizationWarning(warnings, log, $"{path}[{index}].value: unsupported condition value was moved to text; value set to 0.");
+        }
     }
 
     private static void NormalizeGeneratedActionAmounts(JsonObject root, List<string> warnings, Action<string>? log)

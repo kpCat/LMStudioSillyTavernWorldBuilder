@@ -365,6 +365,65 @@ public sealed class GameProjectValidationTests
     }
 
     [Fact]
+    public void GeneratedScenesJsonNormalizer_AddsFallbackSceneForLocationNextSceneId()
+    {
+        var raw = """
+        {
+          "scenes": [
+            {
+              "id": "scene_border_glitch_encounter",
+              "title": "Border glitch",
+              "locationId": "location_green_border_edge",
+              "description": "The border glitches.",
+              "choices": [
+                {
+                  "id": "choice_stabilize_glitch",
+                  "text": "Stabilize",
+                  "nextSceneId": "scene_success",
+                  "requirements": [
+                    { "type": "stat", "targetId": "will", "operator": ">=", "value": 15 }
+                  ],
+                  "costs": [
+                    { "type": "stat", "targetId": "stamina", "amount": 10 }
+                  ],
+                  "effects": [
+                    { "type": "variable", "targetId": "metamodule_sync", "amount": 5 }
+                  ]
+                },
+                {
+                  "id": "choice_retreat_glitch",
+                  "text": "Retreat",
+                  "nextSceneId": "location_border_checkpoint"
+                }
+              ]
+            },
+            {
+              "id": "scene_success",
+              "title": "Success",
+              "locationId": "location_green_border_edge",
+              "description": "Success text."
+            }
+          ]
+        }
+        """;
+        var warnings = new List<string>();
+
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests(raw, warnings);
+        var project = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(project);
+        var scene = Assert.Single(project!.Scenes, x => x.Id == "scene_border_glitch_encounter");
+        Assert.Equal("The border glitches.", scene.Text);
+        var stabilize = Assert.Single(scene.Choices, x => x.Id == "choice_stabilize_glitch");
+        Assert.Single(stabilize.Conditions);
+        Assert.Equal(2, stabilize.Effects.Count);
+        Assert.Contains(stabilize.Effects, x => x.Type == "stat" && x.TargetId == "stamina" && x.Amount == -10);
+        var fallback = Assert.Single(project.Scenes, x => x.Id == "location_border_checkpoint");
+        Assert.Equal("location_border_checkpoint", fallback.LocationId);
+        Assert.Contains(warnings, x => x.Contains("fallback scene", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void CloneService_PreservesIdentityOnCopyMutableData()
     {
         var target = TestProjects.CreatePlayableProject();

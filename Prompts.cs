@@ -1023,6 +1023,11 @@ LLM генерирует только data-driven draft: worldState, formulas, v
 
     public static readonly PromptPreset GenerateScenesBatch = new("GenerateScenesBatch", BatchRules + """
 Сгенерируй 1-5 игровых сцен с choices, conditions и effects.
+GameScene использует поле text для основного текста сцены. Не используй только description вместо text.
+GameChoice поддерживает только conditions и effects. Не используй requirements/costs внутри choices; requirements должны быть conditions, а costs моделируй как effects с отрицательным amount.
+Choice.nextSceneId должен ссылаться только на scene id, а не на location id.
+BAD: "nextSceneId": "location_border_checkpoint"
+GOOD: "nextSceneId": "scene_border_checkpoint_return" плюс отдельная сцена { "id": "scene_border_checkpoint_return", "locationId": "location_border_checkpoint", "text": "..." }.
 Choices должны вести в существующие или сгенерированные сцены. Не делай бессмысленных тупиков; финальные сцены без choices допустимы.
 """, new GenerationSettings(0.50, 0.90, 0.05, 40, 1.05, 0.00, 5000));
 

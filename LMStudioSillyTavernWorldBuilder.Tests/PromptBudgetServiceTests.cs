@@ -135,6 +135,20 @@ public sealed class PromptBudgetServiceTests
     }
 
     [Fact]
+    public void ScenesPrompt_ForbidsLocationIdsAsNextSceneIds()
+    {
+        var prompt = Prompts.GenerateScenesBatch.SystemPrompt;
+
+        Assert.Contains("text", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("nextSceneId", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("location id", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"nextSceneId\": \"location_border_checkpoint\"", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("scene_border_checkpoint_return", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("conditions", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("effects", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SerializeWithinBudget_UsesConservativeEstimatorForRussianText()
     {
         var service = new PromptBudgetService();
