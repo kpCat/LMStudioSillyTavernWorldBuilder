@@ -2,6 +2,7 @@ using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Providers;
 using LMStudioSillyTavernWorldBuilder.Storage;
+using System.Diagnostics;
 
 namespace LMStudioSillyTavernWorldBuilder.Services;
 
@@ -19,6 +20,7 @@ internal sealed class GameCreationPipelineService
     private readonly GameChangeRequestService _changeRequestService = new();
     private readonly GameBalanceSimulatorService _balanceSimulatorService = new();
     private readonly GameMvpOrchestratorService _mvpOrchestratorService = new();
+    private readonly LmStudioCallDiagnosticsService _lmCallDiagnosticsService = new();
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -38,7 +40,7 @@ internal sealed class GameCreationPipelineService
         session.Messages.Add(new ChatMessage { Role = "system", Content = Prompts.GameIdeaDiscussion.SystemPrompt });
         session.Messages.Add(new ChatMessage { Role = "user", Content = initialIdea });
         log("AI discussion started.");
-        var answer = await SendPresetAsync(settings, Prompts.GameIdeaDiscussion, session.Messages, cancellationToken);
+        var answer = await SendPresetAsync(project, settings, Prompts.GameIdeaDiscussion, session.Messages, log, "discussion", cancellationToken);
         session.Messages.Add(new ChatMessage { Role = "assistant", Content = answer });
         await SaveStageTextAsync(project, "discussion_start.txt", answer, cancellationToken);
         return answer;
@@ -53,7 +55,7 @@ internal sealed class GameCreationPipelineService
 
         session.Messages.Add(new ChatMessage { Role = "user", Content = userText });
         log("AI discussion continued.");
-        var answer = await SendPresetAsync(settings, Prompts.GameIdeaDiscussion, session.Messages, cancellationToken);
+        var answer = await SendPresetAsync(project, settings, Prompts.GameIdeaDiscussion, session.Messages, log, "discussion", cancellationToken);
         session.Messages.Add(new ChatMessage { Role = "assistant", Content = answer });
         await SaveStageTextAsync(project, $"discussion_{DateTime.Now:yyyyMMdd_HHmmss}.txt", BuildConversation(session), cancellationToken);
         return answer;
@@ -84,11 +86,11 @@ internal sealed class GameCreationPipelineService
         log("Generating initial data-driven game content.");
         var context = BuildCompactProjectContext(project, "initial-content");
         LogContextBudget(log, "initial-content", context);
-        var text = await SendPresetAsync(settings, Prompts.GameInitialContentJson, new[]
+        var text = await SendPresetAsync(project, settings, Prompts.GameInitialContentJson, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.GameInitialContentJson.SystemPrompt },
             new ChatMessage { Role = "user", Content = context }
-        }, cancellationToken);
+        }, log, "initial-content", cancellationToken);
 
         await ApplyGeneratedProjectJsonAsync(project, text, log, cancellationToken);
         project.ContentPlan.Text = text;
@@ -99,11 +101,11 @@ internal sealed class GameCreationPipelineService
     public async Task<string> BuildImagePromptPlanAsync(GameProjectData project, LmStudioSettings settings, Action<string> log, CancellationToken cancellationToken = default)
     {
         log("Generating image prompt plan.");
-        var text = await SendPresetAsync(settings, Prompts.GameImagePromptJson, new[]
+        var text = await SendPresetAsync(project, settings, Prompts.GameImagePromptJson, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.GameImagePromptJson.SystemPrompt },
             new ChatMessage { Role = "user", Content = BuildCompactProjectContext(project, "image-prompts") }
-        }, cancellationToken);
+        }, log, "image-prompts", cancellationToken);
 
         if (string.IsNullOrWhiteSpace(project.Summary.ProjectPath))
         {
@@ -160,11 +162,11 @@ internal sealed class GameCreationPipelineService
         log("Формирую draft-исправление. Автоприменения не будет.");
         var context = BuildCompactProjectContext(project, "revision-fix");
         LogContextBudget(log, "revision-fix", context);
-        var text = await SendPresetAsync(settings, Prompts.GameRevision, new[]
+        var text = await SendPresetAsync(project, settings, Prompts.GameRevision, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.GameRevision.SystemPrompt },
             new ChatMessage { Role = "user", Content = JsonSerializer.Serialize(new { RevisionRequest = revisionRequest, ProjectContext = JsonSerializer.Deserialize<object>(context) }, _jsonOptions) }
-        }, cancellationToken);
+        }, log, "revision-fix", cancellationToken);
 
         var draft = await CreateGeneratedProjectDraftAsync(project, "revision-fix", text, log, cancellationToken);
         if (draft != null)
@@ -218,11 +220,11 @@ internal sealed class GameCreationPipelineService
         var report = _randomDirectorService.BuildReport(project);
         var userContent = _randomDirectorService.BuildGenerationUserPrompt(project, report, requestedEventCount);
         LogContextBudget(log, "random-director", userContent);
-        var text = await SendPresetAsync(settings, Prompts.GameRandomDirectorJson, new[]
+        var text = await SendPresetAsync(project, settings, Prompts.GameRandomDirectorJson, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.GameRandomDirectorJson.SystemPrompt },
             new ChatMessage { Role = "user", Content = userContent }
-        }, cancellationToken);
+        }, log, "random-director", cancellationToken);
 
         var draft = await CreateGeneratedProjectDraftAsync(project, "random-director", text, log, cancellationToken);
         if (draft != null)
@@ -249,11 +251,11 @@ internal sealed class GameCreationPipelineService
         log("Change Request: затронутые системы: " + string.Join(", ", report.AffectedSystems.Select(x => x.SystemId).Distinct(StringComparer.OrdinalIgnoreCase)) + ".");
         log("Change Request: рисков " + report.Risks.Count + ", шагов плана " + plan.Steps.Count + ".");
 
-        var text = await SendPresetAsync(settings, Prompts.GameChangeRequestPatchJson, new[]
+        var text = await SendPresetAsync(project, settings, Prompts.GameChangeRequestPatchJson, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.GameChangeRequestPatchJson.SystemPrompt },
             new ChatMessage { Role = "user", Content = userContent }
-        }, cancellationToken);
+        }, log, "change-request", cancellationToken);
 
         var draft = await CreateGeneratedProjectDraftAsync(project, "change-request", text, log, cancellationToken);
         if (draft != null)
@@ -279,11 +281,11 @@ internal sealed class GameCreationPipelineService
         LogContextBudget(log, "balance-simulator", userContent);
         log("Balance Simulator: issues=" + report.Issues.Count + ", recommendations=" + report.Recommendations.Count + ", combat encounters=" + report.Combat.SimulatedEncounterCount + ".");
 
-        var text = await SendPresetAsync(settings, Prompts.GameBalanceRebalancePatchJson, new[]
+        var text = await SendPresetAsync(project, settings, Prompts.GameBalanceRebalancePatchJson, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.GameBalanceRebalancePatchJson.SystemPrompt },
             new ChatMessage { Role = "user", Content = userContent }
-        }, cancellationToken);
+        }, log, "balance-simulator", cancellationToken);
 
         var draft = await CreateGeneratedProjectDraftAsync(project, "balance-simulator", text, log, cancellationToken);
         if (draft != null)
@@ -382,11 +384,11 @@ internal sealed class GameCreationPipelineService
     public async Task<string> ReviewBatchAsync(GameProjectData project, LmStudioSettings settings, string batchJson, Action<string> log, CancellationToken cancellationToken = default)
     {
         log("Reviewing generated batch against existing content.");
-        return await SendPresetAsync(settings, Prompts.ReviewGeneratedBatchAgainstExistingContent, new[]
+        return await SendPresetAsync(project, settings, Prompts.ReviewGeneratedBatchAgainstExistingContent, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.ReviewGeneratedBatchAgainstExistingContent.SystemPrompt },
             new ChatMessage { Role = "user", Content = BuildBatchUserContent(project, string.Empty, 0, "review", "review", batchJson) }
-        }, cancellationToken);
+        }, log, "review", cancellationToken);
     }
 
     private async Task<string> BuildContentBatchAsync(GameProjectData project, LmStudioSettings settings, PromptPreset preset, string stage, string userRules, int count, string category, Action<string> log, CancellationToken cancellationToken)
@@ -394,11 +396,11 @@ internal sealed class GameCreationPipelineService
         log("Generating content batch: " + stage);
         var userContent = BuildBatchUserContent(project, userRules, count, category, stage);
         LogContextBudget(log, stage, userContent);
-        var text = await SendPresetAsync(settings, preset, new[]
+        var text = await SendPresetAsync(project, settings, preset, new[]
         {
             new ChatMessage { Role = "system", Content = preset.SystemPrompt },
             new ChatMessage { Role = "user", Content = userContent }
-        }, cancellationToken);
+        }, log, stage, cancellationToken);
 
         await CreateGeneratedProjectDraftAsync(project, stage, text, log, cancellationToken);
         await SaveStageTextAsync(project, $"{stage}_{DateTime.Now:yyyyMMdd_HHmmss}.json.txt", text, cancellationToken);
@@ -408,20 +410,59 @@ internal sealed class GameCreationPipelineService
     private async Task<string> RunTextStageAsync(GameProjectData project, LmStudioSettings settings, PromptPreset preset, string userContent, string fileName, Action<string> assign, Action<string> log, CancellationToken cancellationToken)
     {
         log($"Running pipeline stage: {preset.Name}");
-        var text = await SendPresetAsync(settings, preset, new[]
+        var stage = Path.GetFileNameWithoutExtension(fileName);
+        var text = await SendPresetAsync(project, settings, preset, new[]
         {
             new ChatMessage { Role = "system", Content = preset.SystemPrompt },
             new ChatMessage { Role = "user", Content = userContent }
-        }, cancellationToken);
+        }, log, stage, cancellationToken);
         assign(text);
         await SaveStageTextAsync(project, fileName, text, cancellationToken);
         return text;
     }
 
-    private async Task<string> SendPresetAsync(LmStudioSettings settings, PromptPreset preset, IEnumerable<ChatMessage> messages, CancellationToken cancellationToken)
+    private async Task<string> SendPresetAsync(GameProjectData? project, LmStudioSettings settings, PromptPreset preset, IEnumerable<ChatMessage> messages, Action<string>? log, string stage, CancellationToken cancellationToken)
     {
         var generationSettings = ApplyOutputTokenLimit(preset.Settings);
-        return await _lmStudioService.SendAsync(settings, messages.Select(x => new ApiMessage(x.Role, x.Content)).ToList(), generationSettings, cancellationToken);
+        var messageList = messages.ToList();
+        var estimatedInputTokens = _lmCallDiagnosticsService.EstimateTokens(string.Concat(messageList.Select(x => x.Content ?? string.Empty)), GetApproxCharsPerToken());
+        log?.Invoke($"LLM-вызов {stage}: старт, вход ~{estimatedInputTokens} токенов, лимит контекста {GetMaxInputContextTokens()}, max output {generationSettings.MaxTokens}.");
+
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var text = await _lmStudioService.SendAsync(settings, messageList.Select(x => new ApiMessage(x.Role, x.Content)).ToList(), generationSettings, cancellationToken);
+            stopwatch.Stop();
+            var record = _lmCallDiagnosticsService.CreateSuccessRecord(stage, settings, generationSettings, messageList, GetMaxInputContextTokens(), GetApproxCharsPerToken(), stopwatch.ElapsedMilliseconds, text);
+            await TryAppendLmCallDiagnosticsAsync(project, record, log, CancellationToken.None);
+            log?.Invoke($"LLM-вызов {stage}: успешно за {stopwatch.ElapsedMilliseconds} мс, ответ {record.ResponseCharacterCount} символов (~{record.EstimatedResponseTokens} токенов).");
+            return text;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            var record = _lmCallDiagnosticsService.CreateFailureRecord(stage, settings, generationSettings, messageList, GetMaxInputContextTokens(), GetApproxCharsPerToken(), stopwatch.ElapsedMilliseconds, ex);
+            await TryAppendLmCallDiagnosticsAsync(project, record, log, CancellationToken.None);
+            log?.Invoke($"LLM-вызов {stage}: ошибка за {stopwatch.ElapsedMilliseconds} мс: {record.ErrorMessage}");
+            throw;
+        }
+    }
+
+    private async Task TryAppendLmCallDiagnosticsAsync(GameProjectData? project, LmStudioCallDiagnosticRecord record, Action<string>? log, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(project?.Summary.ProjectPath))
+        {
+            return;
+        }
+
+        try
+        {
+            await _lmCallDiagnosticsService.AppendAsync(project.Summary.ProjectPath, record, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke("Не удалось записать диагностику LLM-вызова: " + ex.Message);
+        }
     }
 
     private async Task SaveStageTextAsync(GameProjectData project, string fileName, string text, CancellationToken cancellationToken)
