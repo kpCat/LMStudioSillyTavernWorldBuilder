@@ -238,7 +238,7 @@ internal sealed class GameProjectValidator
             result.Warnings.Add("Combat PlayerHealthStatId points to missing stat: " + healthStatId);
         }
 
-        var targetScopes = new HashSet<string>(new[] { "self", "enemy", "ally", "anyEnemy", "anyAlly" }, StringComparer.OrdinalIgnoreCase);
+        var targetScopes = new HashSet<string>(new[] { "self", "player", "enemy", "ally", "anyEnemy", "anyAlly" }, StringComparer.OrdinalIgnoreCase);
         var actorTeams = new HashSet<string>(new[] { "", "player", "ally", "enemy" }, StringComparer.OrdinalIgnoreCase);
         foreach (var encounter in project.Encounters.Where(x => string.Equals(x.Kind, "combat", StringComparison.OrdinalIgnoreCase) || x.Combatants.Count > 0))
         {

@@ -944,6 +944,7 @@ Combat encounters должны быть обычными encounters с kind="com
 Используй combat.enabled=true, playerHealthStatId и при необходимости defaultHitChanceFormulaExpression/defaultDodgeChanceFormulaExpression/defaultBlockChanceFormulaExpression/defaultCritChanceFormulaExpression.
 Encounter для боя должен иметь combatants: player/ally и enemy, team, isPlayer, actionIds, stats с числовым health, victorySceneId/defeatSceneId при необходимости, onWinEffects для наград.
 Combatant должен использовать team/isPlayer, не role. Не вкладывай actions внутрь combatants; все действия должны быть в top-level actions, а combatants ссылаются на них через actionIds.
+Every combatant actionIds entry must point to an action in top-level actions. If enemy uses enemy_glitch_attack, include this action in top-level actions. Do not create actionIds without defining matching actions.
 Для урона по участникам боя используй effect type combatDamage. Для лечения участников боя используй combatHeal. Для боевых статусов используй combatStatus.
 Для наград после победы используй encounter.OnWinEffects: playerExperience, skillExperience, item, currency, flag, quest.
 Используй только существующие stats из compact context. Для текущего MVP smoke обычно доступны health, will, stamina, stability. Не используй agility, strength, mana, если таких stats нет в compact context. Если сомневаешься, используй will и stamina.

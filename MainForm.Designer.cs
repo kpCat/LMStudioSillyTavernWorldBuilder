@@ -324,7 +324,6 @@ partial class MainForm
         btnBuildMvp = new Button();
         btnBuildStructure = new Button();
         btnGenerateContent = new Button();
-        discussionToolTip = new ToolTip(components);
         tabGameCrafter = new TabPage();
         gameCrafterLayout = new TableLayoutPanel();
         gameCrafterTopLayout = new TableLayoutPanel();
@@ -530,6 +529,7 @@ partial class MainForm
         nudFooocusShutdown = new NumericUpDown();
         lblSettings = new Label();
         btnSaveSettings = new Button();
+        discussionToolTip = new ToolTip(components);
         assetsPromptButtons = new FlowLayoutPanel();
         lblValidationResult = new Label();
         rootLayout.SuspendLayout();
@@ -947,6 +947,7 @@ partial class MainForm
         // 
         // discussionButtons
         // 
+        discussionButtons.AutoScroll = true;
         discussionButtons.Controls.Add(btnStartDiscussion);
         discussionButtons.Controls.Add(btnSend);
         discussionButtons.Controls.Add(btnAskGenre);
@@ -959,7 +960,6 @@ partial class MainForm
         discussionButtons.Controls.Add(btnBuildMvp);
         discussionButtons.Controls.Add(btnBuildStructure);
         discussionButtons.Controls.Add(btnGenerateContent);
-        discussionButtons.AutoScroll = true;
         discussionButtons.Dock = DockStyle.Fill;
         discussionButtons.Location = new Point(3, 679);
         discussionButtons.Name = "discussionButtons";
@@ -973,163 +973,154 @@ partial class MainForm
         btnStartDiscussion.Location = new Point(3, 3);
         btnStartDiscussion.MinimumSize = new Size(72, 27);
         btnStartDiscussion.Name = "btnStartDiscussion";
-        btnStartDiscussion.Size = new Size(75, 23);
+        btnStartDiscussion.Size = new Size(72, 27);
         btnStartDiscussion.TabIndex = 0;
-        btnStartDiscussion.Text = "Начать обсуждение";
-        btnStartDiscussion.Click += btnStartDiscussion_Click;
         btnStartDiscussion.Text = "Начать";
         discussionToolTip.SetToolTip(btnStartDiscussion, "Начать AI-обсуждение идеи текущего проекта.");
+        btnStartDiscussion.Click += btnStartDiscussion_Click;
         // 
         // btnSend
         // 
         btnSend.AutoSize = true;
         btnSend.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnSend.Location = new Point(84, 3);
+        btnSend.Location = new Point(81, 3);
         btnSend.MinimumSize = new Size(72, 27);
         btnSend.Name = "btnSend";
-        btnSend.Size = new Size(75, 23);
+        btnSend.Size = new Size(75, 27);
         btnSend.TabIndex = 1;
-        btnSend.Click += btnSend_Click;
         btnSend.Text = "Отправить";
         discussionToolTip.SetToolTip(btnSend, "Отправить текст из поля ввода в AI-обсуждение.");
+        btnSend.Click += btnSend_Click;
         // 
         // btnAskGenre
         // 
         btnAskGenre.AutoSize = true;
         btnAskGenre.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnAskGenre.Location = new Point(165, 3);
+        btnAskGenre.Location = new Point(162, 3);
         btnAskGenre.MinimumSize = new Size(72, 27);
         btnAskGenre.Name = "btnAskGenre";
-        btnAskGenre.Size = new Size(75, 23);
+        btnAskGenre.Size = new Size(72, 27);
         btnAskGenre.TabIndex = 2;
-        btnAskGenre.Text = "Уточнить жанр";
-        btnAskGenre.Click += btnStructuredPrompt_Click;
         btnAskGenre.Text = "Жанр/тон";
         discussionToolTip.SetToolTip(btnAskGenre, "Попросить модель уточнить жанр, тон, темп и аудиторию.");
+        btnAskGenre.Click += btnStructuredPrompt_Click;
         // 
         // btnAskWorld
         // 
         btnAskWorld.AutoSize = true;
         btnAskWorld.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnAskWorld.Location = new Point(246, 3);
+        btnAskWorld.Location = new Point(240, 3);
         btnAskWorld.MinimumSize = new Size(72, 27);
         btnAskWorld.Name = "btnAskWorld";
-        btnAskWorld.Size = new Size(75, 23);
+        btnAskWorld.Size = new Size(72, 27);
         btnAskWorld.TabIndex = 3;
-        btnAskWorld.Text = "Уточнить мир";
-        btnAskWorld.Click += btnStructuredPrompt_Click;
         btnAskWorld.Text = "Мир/лор";
         discussionToolTip.SetToolTip(btnAskWorld, "Попросить модель уточнить мир, лор, конфликт и ограничения сеттинга.");
+        btnAskWorld.Click += btnStructuredPrompt_Click;
         // 
         // btnAskHero
         // 
         btnAskHero.AutoSize = true;
         btnAskHero.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnAskHero.Location = new Point(327, 3);
+        btnAskHero.Location = new Point(318, 3);
         btnAskHero.MinimumSize = new Size(72, 27);
         btnAskHero.Name = "btnAskHero";
-        btnAskHero.Size = new Size(75, 23);
+        btnAskHero.Size = new Size(72, 27);
         btnAskHero.TabIndex = 4;
-        btnAskHero.Text = "Уточнить героя";
-        btnAskHero.Click += btnStructuredPrompt_Click;
         btnAskHero.Text = "Герой";
         discussionToolTip.SetToolTip(btnAskHero, "Попросить модель уточнить героя, роль игрока и стартовую мотивацию.");
+        btnAskHero.Click += btnStructuredPrompt_Click;
         // 
         // btnAskMechanics
         // 
         btnAskMechanics.AutoSize = true;
         btnAskMechanics.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnAskMechanics.Location = new Point(408, 3);
+        btnAskMechanics.Location = new Point(396, 3);
         btnAskMechanics.MinimumSize = new Size(72, 27);
         btnAskMechanics.Name = "btnAskMechanics";
-        btnAskMechanics.Size = new Size(75, 23);
+        btnAskMechanics.Size = new Size(73, 27);
         btnAskMechanics.TabIndex = 5;
-        btnAskMechanics.Text = "Уточнить механику";
-        btnAskMechanics.Click += btnStructuredPrompt_Click;
         btnAskMechanics.Text = "Механики";
         discussionToolTip.SetToolTip(btnAskMechanics, "Попросить модель уточнить статы, навыки, инвентарь, выборы и прогрессию.");
+        btnAskMechanics.Click += btnStructuredPrompt_Click;
         // 
         // btnAskVisualStyle
         // 
         btnAskVisualStyle.AutoSize = true;
         btnAskVisualStyle.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnAskVisualStyle.Location = new Point(489, 3);
+        btnAskVisualStyle.Location = new Point(475, 3);
         btnAskVisualStyle.MinimumSize = new Size(72, 27);
         btnAskVisualStyle.Name = "btnAskVisualStyle";
-        btnAskVisualStyle.Size = new Size(75, 23);
+        btnAskVisualStyle.Size = new Size(72, 27);
         btnAskVisualStyle.TabIndex = 6;
-        btnAskVisualStyle.Text = "Визуальный стиль";
-        btnAskVisualStyle.Click += btnStructuredPrompt_Click;
         btnAskVisualStyle.Text = "Визуал";
         discussionToolTip.SetToolTip(btnAskVisualStyle, "Попросить модель уточнить визуальный стиль иллюстраций.");
+        btnAskVisualStyle.Click += btnStructuredPrompt_Click;
         // 
         // btnBuildBrief
         // 
         btnBuildBrief.AutoSize = true;
         btnBuildBrief.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnBuildBrief.Location = new Point(570, 3);
+        btnBuildBrief.Location = new Point(553, 3);
         btnBuildBrief.MinimumSize = new Size(72, 27);
         btnBuildBrief.Name = "btnBuildBrief";
-        btnBuildBrief.Size = new Size(75, 23);
+        btnBuildBrief.Size = new Size(72, 27);
         btnBuildBrief.TabIndex = 7;
-        btnBuildBrief.Text = "Сформировать бриф";
-        btnBuildBrief.Click += btnBuildBrief_Click;
         btnBuildBrief.Text = "Бриф";
         discussionToolTip.SetToolTip(btnBuildBrief, "Сформировать legacy-бриф через AI-обсуждение.");
+        btnBuildBrief.Click += btnBuildBrief_Click;
         // 
         // btnBuildConcept
         // 
         btnBuildConcept.AutoSize = true;
         btnBuildConcept.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnBuildConcept.Location = new Point(651, 3);
+        btnBuildConcept.Location = new Point(631, 3);
         btnBuildConcept.MinimumSize = new Size(72, 27);
         btnBuildConcept.Name = "btnBuildConcept";
-        btnBuildConcept.Size = new Size(75, 23);
+        btnBuildConcept.Size = new Size(72, 27);
         btnBuildConcept.TabIndex = 8;
-        btnBuildConcept.Click += btnBuildConcept_Click;
         btnBuildConcept.Text = "Концепт";
         discussionToolTip.SetToolTip(btnBuildConcept, "Сформировать legacy-концепт проекта.");
+        btnBuildConcept.Click += btnBuildConcept_Click;
         // 
         // btnBuildMvp
         // 
         btnBuildMvp.AutoSize = true;
         btnBuildMvp.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnBuildMvp.Location = new Point(732, 3);
+        btnBuildMvp.Location = new Point(709, 3);
         btnBuildMvp.MinimumSize = new Size(72, 27);
         btnBuildMvp.Name = "btnBuildMvp";
-        btnBuildMvp.Size = new Size(75, 23);
+        btnBuildMvp.Size = new Size(74, 27);
         btnBuildMvp.TabIndex = 9;
-        btnBuildMvp.Text = "MVP";
-        btnBuildMvp.Click += btnBuildMvp_Click;
         btnBuildMvp.Text = "MVP-план";
         discussionToolTip.SetToolTip(btnBuildMvp, "Сформировать legacy-MVP план проекта.");
+        btnBuildMvp.Click += btnBuildMvp_Click;
         // 
         // btnBuildStructure
         // 
         btnBuildStructure.AutoSize = true;
         btnBuildStructure.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnBuildStructure.Location = new Point(813, 3);
+        btnBuildStructure.Location = new Point(789, 3);
         btnBuildStructure.MinimumSize = new Size(72, 27);
         btnBuildStructure.Name = "btnBuildStructure";
-        btnBuildStructure.Size = new Size(75, 23);
+        btnBuildStructure.Size = new Size(73, 27);
         btnBuildStructure.TabIndex = 10;
-        btnBuildStructure.Click += btnBuildStructure_Click;
         btnBuildStructure.Text = "Структура";
         discussionToolTip.SetToolTip(btnBuildStructure, "Сформировать legacy-структуру проекта.");
+        btnBuildStructure.Click += btnBuildStructure_Click;
         // 
         // btnGenerateContent
         // 
         btnGenerateContent.AutoSize = true;
         btnGenerateContent.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        btnGenerateContent.Location = new Point(894, 3);
+        btnGenerateContent.Location = new Point(868, 3);
         btnGenerateContent.MinimumSize = new Size(72, 27);
         btnGenerateContent.Name = "btnGenerateContent";
-        btnGenerateContent.Size = new Size(75, 23);
+        btnGenerateContent.Size = new Size(98, 27);
         btnGenerateContent.TabIndex = 11;
-        btnGenerateContent.Text = "Данные игры";
-        btnGenerateContent.Click += btnGenerateContent_Click;
         btnGenerateContent.Text = "Legacy данные";
         discussionToolTip.SetToolTip(btnGenerateContent, "Сгенерировать legacy-данные игры из обсуждения.");
+        btnGenerateContent.Click += btnGenerateContent_Click;
         // 
         // tabGameCrafter
         // 
@@ -3455,6 +3446,7 @@ partial class MainForm
         discussionLayout.ResumeLayout(false);
         discussionLayout.PerformLayout();
         discussionButtons.ResumeLayout(false);
+        discussionButtons.PerformLayout();
         tabGameCrafter.ResumeLayout(false);
         gameCrafterLayout.ResumeLayout(false);
         gameCrafterTopLayout.ResumeLayout(false);

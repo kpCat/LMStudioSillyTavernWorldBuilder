@@ -352,6 +352,9 @@ public sealed class GameDraftServiceTests
         Assert.Contains("actions", prompt);
         Assert.Contains("encounters", prompt);
         Assert.Contains("availableInCombat=true", prompt);
+        Assert.Contains("Every combatant actionIds entry must point to an action in top-level actions", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enemy_glitch_attack", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not create actionIds without defining matching actions", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -437,6 +440,107 @@ public sealed class GameDraftServiceTests
         var combatStage = Assert.Single(report.Stages, x => x.Stage == "combat");
         Assert.True(combatStage.IsSatisfied);
         Assert.NotEqual("combat", report.NextRecommendedStage);
+    }
+
+    [Fact]
+    public async Task CombatJsonNormalizer_CreatesFallbackActionForMissingCombatantActionId()
+    {
+        var warnings = new List<string>();
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests("""
+        {
+          "combat": {
+            "enabled": true,
+            "playerHealthStatId": "health"
+          },
+          "actions": [
+            {
+              "id": "combat_strike",
+              "availableInCombat": true,
+              "actorTeam": "player",
+              "targetScope": "enemy",
+              "costs": [
+                { "type": "stamina", "amount": 5 }
+              ],
+              "effects": [
+                { "type": "combatDamage", "targetId": "target", "amount": 6 }
+              ]
+            }
+          ],
+          "encounters": [
+            {
+              "id": "encounter_glitch_entity_fight",
+              "kind": "combat",
+              "combatants": [
+                {
+                  "id": "player",
+                  "isPlayer": true,
+                  "team": "player",
+                  "actionIds": [ "combat_strike" ],
+                  "stats": { "health": 100 }
+                },
+                {
+                  "id": "enemy_glitch_entity",
+                  "isPlayer": false,
+                  "team": "enemy",
+                  "actionIds": [ "enemy_glitch_attack" ],
+                  "stats": { "health": 45 }
+                }
+              ]
+            }
+          ]
+        }
+        """, warnings);
+        var generated = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            ?? throw new InvalidOperationException("Generated combat JSON is empty.");
+
+        var fallback = Assert.Single(generated.Actions, x => x.Id == "enemy_glitch_attack");
+        Assert.True(fallback.AvailableInCombat);
+        Assert.Equal("enemy", fallback.ActorTeam);
+        Assert.Equal("player", fallback.TargetScope);
+        Assert.Equal("combat", fallback.Kind);
+        Assert.Contains(fallback.Effects, x => x.Type == "combatDamage" && x.TargetId == "target" && x.Amount == 5);
+        Assert.Contains(fallback.Tags, x => x == "enemy");
+        Assert.Contains(warnings, x => x == "Created fallback combat action 'enemy_glitch_attack' for combatant 'enemy_glitch_entity'.");
+
+        var playerAction = Assert.Single(generated.Actions, x => x.Id == "combat_strike");
+        var staminaCost = Assert.Single(playerAction.Costs);
+        Assert.Equal("stat", staminaCost.Type);
+        Assert.Equal("stamina", staminaCost.TargetId);
+        Assert.Equal(5, staminaCost.Amount);
+
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = TestPaths.CreateTempDirectory();
+        project.DesignProfile.InitialIdea = "combat test";
+        project.Stats.Add(new GameStatDefinition { Id = "health", Name = "Health", InitialValue = 100, IsResource = true });
+        project.Stats.Add(new GameStatDefinition { Id = "stamina", Name = "Stamina", InitialValue = 10, IsResource = true });
+        project.Stats.Add(new GameStatDefinition { Id = "stability", Name = "Stability", InitialValue = 10, IsResource = true });
+        var draftFolder = Path.Combine(project.Summary.ProjectPath, "drafts", "draft_missing_combat_action");
+        Directory.CreateDirectory(draftFolder);
+        var draft = new GameDraftSession
+        {
+            SessionId = "draft_missing_combat_action",
+            Stage = "combat",
+            Validation = { IsValid = true }
+        };
+
+        var combatPath = await WriteDraftEntityAsync(draftFolder, "combat", "combat", generated.Combat!);
+        draft.Files.Add(CreateDraftFile(project, "combat", "combat", combatPath));
+        foreach (var action in generated.Actions)
+        {
+            var actionPath = await WriteDraftEntityAsync(draftFolder, "actions", action.Id, action);
+            draft.Files.Add(CreateDraftFile(project, "actions", action.Id, actionPath));
+        }
+
+        var encounter = Assert.Single(generated.Encounters);
+        var encounterPath = await WriteDraftEntityAsync(draftFolder, "encounters", encounter.Id, encounter);
+        draft.Files.Add(CreateDraftFile(project, "encounters", encounter.Id, encounterPath));
+
+        await new GameDraftService().ApplyDraftAsync(project, draft, CancellationToken.None);
+
+        Assert.Contains(project.Actions, x => x.Id == "enemy_glitch_attack");
+        var report = new GameMvpOrchestratorService().BuildReadinessReport(project);
+        var combatStage = Assert.Single(report.Stages, x => x.Stage == "combat");
+        Assert.True(combatStage.IsSatisfied);
     }
 
     private static GameDraftFile CreateDraftFile(GameProjectData project, string entityType, string entityId, string path)

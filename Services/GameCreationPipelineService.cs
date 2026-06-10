@@ -1020,7 +1020,7 @@ internal sealed class GameCreationPipelineService
     {
         var json = ExtractJson(text);
         var normalizationWarnings = new List<string>();
-        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log);
+        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log, project.Actions.Select(x => x.Id));
         try
         {
             var generated = JsonSerializer.Deserialize<GameProjectData>(json, _jsonOptions);
@@ -1106,7 +1106,7 @@ internal sealed class GameCreationPipelineService
 
         var json = ExtractJson(rawText);
         var normalizationWarnings = new List<string>();
-        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log);
+        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log, project.Actions.Select(x => x.Id));
         try
         {
             var generated = JsonSerializer.Deserialize<GameProjectData>(json, _jsonOptions);
@@ -1187,10 +1187,10 @@ internal sealed class GameCreationPipelineService
 
     internal static string NormalizeGeneratedProjectJsonAmountsForTests(string json, List<string> warnings)
     {
-        return NormalizeGeneratedProjectJsonAmounts(json, warnings, null);
+        return NormalizeGeneratedProjectJsonAmounts(json, warnings, null, []);
     }
 
-    private static string NormalizeGeneratedProjectJsonAmounts(string json, List<string> warnings, Action<string>? log)
+    private static string NormalizeGeneratedProjectJsonAmounts(string json, List<string> warnings, Action<string>? log, IEnumerable<string> existingActionIds)
     {
         JsonNode? root;
         try
@@ -1212,12 +1212,12 @@ internal sealed class GameCreationPipelineService
         NormalizeGeneratedStatusEffects(rootObject, warnings, log);
         NormalizeGeneratedWorldState(rootObject, warnings, log);
         NormalizeGeneratedScenes(rootObject, warnings, log);
-        NormalizeGeneratedCombat(rootObject, warnings, log);
+        NormalizeGeneratedCombat(rootObject, warnings, log, existingActionIds);
 
         return root.ToJsonString();
     }
 
-    private static void NormalizeGeneratedCombat(JsonObject root, List<string> warnings, Action<string>? log)
+    private static void NormalizeGeneratedCombat(JsonObject root, List<string> warnings, Action<string>? log, IEnumerable<string> existingActionIds)
     {
         var movedCombatActions = MoveLegacyCombatActions(root, warnings, log);
         var movedCombatEncounters = MoveLegacyCombatEncounters(root, warnings, log);
@@ -1230,6 +1230,7 @@ internal sealed class GameCreationPipelineService
 
         NormalizeCombatDefinition(root["combat"] as JsonObject, warnings, log);
         NormalizeCombatEncounters(root["encounters"] as JsonArray, warnings, log);
+        EnsureReferencedCombatActions(root, existingActionIds, warnings, log);
 
         if ((movedCombatActions > 0 || movedCombatEncounters > 0 || hasCombatActions || hasCombatEncounters)
             && root["combat"] is not JsonObject)
@@ -1474,6 +1475,9 @@ internal sealed class GameCreationPipelineService
     private static void NormalizeMovedCombatAction(JsonObject action, string actorTeam, List<string> warnings, Action<string>? log, string path)
     {
         action["availableInCombat"] = true;
+        NormalizeRequirementArray(action["requirements"] as JsonArray, $"{path}.requirements", warnings, log);
+        NormalizeCostArray(action["costs"] as JsonArray, $"{path}.costs", warnings, log);
+        NormalizeAmountArray(action["effects"] as JsonArray, $"{path}.effects", warnings, log);
         if (string.IsNullOrWhiteSpace(GetJsonString(action, "actorTeam")))
         {
             action["actorTeam"] = string.Equals(actorTeam, "enemy", StringComparison.OrdinalIgnoreCase) ? "enemy" : "player";
@@ -1484,6 +1488,97 @@ internal sealed class GameCreationPipelineService
             action["targetScope"] = "enemy";
             AddNormalizationWarning(warnings, log, $"{path}.targetScope: filled with '{action["targetScope"]}'.");
         }
+    }
+
+    private static void EnsureReferencedCombatActions(JsonObject root, IEnumerable<string> existingActionIds, List<string> warnings, Action<string>? log)
+    {
+        if (root["encounters"] is not JsonArray encounters)
+        {
+            return;
+        }
+
+        var actions = EnsureJsonArray(root, "actions");
+        var knownActionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in existingActionIds)
+        {
+            if (!string.IsNullOrWhiteSpace(id))
+            {
+                knownActionIds.Add(id);
+            }
+        }
+
+        foreach (var action in actions.OfType<JsonObject>())
+        {
+            var id = GetJsonString(action, "id");
+            if (!string.IsNullOrWhiteSpace(id))
+            {
+                knownActionIds.Add(id);
+            }
+        }
+
+        for (var encounterIndex = 0; encounterIndex < encounters.Count; encounterIndex++)
+        {
+            if (encounters[encounterIndex] is not JsonObject encounter || encounter["combatants"] is not JsonArray combatants)
+            {
+                continue;
+            }
+
+            for (var combatantIndex = 0; combatantIndex < combatants.Count; combatantIndex++)
+            {
+                if (combatants[combatantIndex] is not JsonObject combatant || combatant["actionIds"] is not JsonArray actionIds)
+                {
+                    continue;
+                }
+
+                var combatantId = GetJsonString(combatant, "id");
+                var team = GetJsonString(combatant, "team");
+                for (var actionIndex = 0; actionIndex < actionIds.Count; actionIndex++)
+                {
+                    if (actionIds[actionIndex] is not JsonValue actionIdValue
+                        || !actionIdValue.TryGetValue<string>(out var actionId)
+                        || string.IsNullOrWhiteSpace(actionId)
+                        || knownActionIds.Contains(actionId))
+                    {
+                        continue;
+                    }
+
+                    actions.Add(CreateFallbackCombatAction(actionId, team));
+                    knownActionIds.Add(actionId);
+                    AddNormalizationWarning(warnings, log, $"Created fallback combat action '{actionId}' for combatant '{combatantId}'.");
+                }
+            }
+        }
+    }
+
+    private static JsonObject CreateFallbackCombatAction(string actionId, string team)
+    {
+        var isEnemy = string.Equals(team, "enemy", StringComparison.OrdinalIgnoreCase);
+        return new JsonObject
+        {
+            ["id"] = actionId,
+            ["name"] = isEnemy ? "Атака противника" : "Боевой приём",
+            ["kind"] = "combat",
+            ["description"] = isEnemy ? "Базовая атака противника." : string.Empty,
+            ["availableInCombat"] = true,
+            ["actorTeam"] = isEnemy ? "enemy" : "player",
+            ["targetScope"] = isEnemy ? "player" : "enemy",
+            ["requirements"] = new JsonArray(),
+            ["costs"] = new JsonArray(),
+            ["effects"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = "combatDamage",
+                    ["targetId"] = "target",
+                    ["amount"] = isEnemy ? 5 : 4,
+                    ["text"] = isEnemy ? "Противник атакует." : "Вы атакуете."
+                }
+            },
+            ["cooldownTurns"] = 0,
+            ["tags"] = isEnemy
+                ? new JsonArray(JsonValue.Create("enemy"), JsonValue.Create("combat"), JsonValue.Create("attack"))
+                : new JsonArray(JsonValue.Create("player"), JsonValue.Create("combat"))
+        };
     }
 
     private static HashSet<string> GetDeclaredStatIds(JsonObject root)
@@ -1744,7 +1839,7 @@ internal sealed class GameCreationPipelineService
             choice["effects"] = effects;
         }
 
-        NormalizeAmountArray(costs, $"$.scenes[*].choices[{choiceIndex}].costs", warnings, log);
+        NormalizeCostArray(costs, $"$.scenes[*].choices[{choiceIndex}].costs", warnings, log);
         for (var costIndex = 0; costIndex < costs.Count; costIndex++)
         {
             if (costs[costIndex] is not JsonObject cost)
@@ -2036,7 +2131,7 @@ internal sealed class GameCreationPipelineService
             }
 
             NormalizeRequirementArray(action["requirements"] as JsonArray, $"$.actions[{actionIndex}].requirements", warnings, log);
-            NormalizeAmountArray(action["costs"] as JsonArray, $"$.actions[{actionIndex}].costs", warnings, log);
+            NormalizeCostArray(action["costs"] as JsonArray, $"$.actions[{actionIndex}].costs", warnings, log);
             NormalizeAmountArray(action["effects"] as JsonArray, $"$.actions[{actionIndex}].effects", warnings, log);
         }
     }
