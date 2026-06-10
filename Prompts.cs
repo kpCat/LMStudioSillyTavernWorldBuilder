@@ -865,9 +865,11 @@ Delete/remove/reduce:
 ID пиши snake_case латиницей. Если нужна ссылка на существующую сущность, используй ID из compact context.
 Если создаёшь новую сущность, добавь минимально нужные связи. Не создавай огромную игру за один batch.
 Используй effects с type/mode/targetId/amount/text/parameters.
-Используй requirements/conditions с type/targetId/operator/value/text.
+Используй requirements/conditions с type/targetId/operator/value/text/stringValue.
+Requirement.value must be integer JSON number only. Never put strings, state ids, formula ids, dice/random expressions or booleans into requirement.value.
+For string/state comparisons use stringValue and set value to 0, for example { "type": "worldAspect", "targetId": "aspect_border_instability", "operator": "==", "value": 0, "stringValue": "unstable" }.
 Поддержанные системы: stats/resources, currencies, variables, formulas, statusEffects, progressionNodes, mechanics, inventory items, equipment slots, skills, spells как skill kind=spell, elements, locations, location connections, location states, scenes, encounters, actions.
-Поддержанные condition/requirement types: stat, item, skill, relationship, quest, flag, currency, variable, locationState, formula.
+Поддержанные condition/requirement types: stat, item, skill, relationship, quest, flag, currency, variable, locationState, worldState, worldAspect, timeSegment, formula.
 Поддержанные effect types: stat, item, relationship, quest, log, currency, variable, flag, locationState, learnSkill, skill, status/statusEffect, progression/unlockProgression, experience, playerExperience, skillExperience, playerLevel.
 Supported cost types: stat, item, currency, variable, cooldown.
 Supported skill kind: passive, active, spell, craft, social.
@@ -963,6 +965,9 @@ LLM генерирует только data-driven draft: worldState, formulas, v
 - Use chancePercent integer 0..100, not probability 0.3.
 - Put player-facing event text into text. Description may also be present, but text is required for ambient events.
 - If an event needs conditions, use requirements array with supported requirement fields. Do not put condition object into trigger.
+- Requirement.value must be integer. For world aspect/state checks, put the state id into stringValue, not value.
+- BAD: { "type": "worldAspect", "targetId": "aspect_border_instability", "operator": "==", "value": "unstable" }
+- GOOD: { "type": "worldAspect", "targetId": "aspect_border_instability", "operator": "==", "value": 0, "stringValue": "unstable" }
 
 Жёсткая schema для worldState.rules:
 - trigger must be a string only: "turnEnd", "travel", or "action".
@@ -970,6 +975,7 @@ LLM генерирует только data-driven draft: worldState, formulas, v
 - BAD: "effect": { "type": "stat", "targetId": "stability" }
 - GOOD: "effects": [{ "type": "stat", "targetId": "stability", "amount": -1 }]
 - Use chancePercent integer 0..100, not probability.
+- Rule requirements follow the same schema: value integer only; string/state ids go to stringValue.
 
 Примеры жанров:
 - fantasy: утро/день/вечер/ночь, погода, сезон, фаза луны, магический фон, слухи, состояние фракций/локаций;

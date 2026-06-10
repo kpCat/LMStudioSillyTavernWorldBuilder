@@ -125,10 +125,13 @@ public sealed class PromptBudgetServiceTests
 
         Assert.Contains("trigger must be a string", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Allowed trigger strings", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(""trigger": {", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(""trigger": "turnEnd"", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"trigger\": {", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"trigger\": \"turnEnd\"", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Use effects array", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not output singular effect object", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Requirement.value must be integer", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stringValue", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"value\": \"unstable\"", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -238,7 +238,10 @@ public sealed class GameProjectValidationTests
                 "name": "Border shimmer",
                 "description": "The border shimmers.",
                 "trigger": { "type": "locationState", "targetId": "aspect_border_instability", "operator": "==", "value": "fluctuating" },
-                "probability": 0.3
+                "probability": 0.3,
+                "requirements": [
+                  { "type": "locationState", "targetId": "aspect_border_instability", "operator": "==", "value": "fluctuating" }
+                ]
               },
               {
                 "id": "event_sync_whisper",
@@ -258,6 +261,10 @@ public sealed class GameProjectValidationTests
                 "id": "rule_instability_drain",
                 "name": "Instability drain",
                 "probability": 0.5,
+                "requirements": [
+                  { "type": "worldAspect", "targetId": "aspect_border_instability", "operator": "==", "value": "unstable" },
+                  { "type": "variable", "targetId": "metamodule_sync", "operator": ">=", "value": "10" }
+                ],
                 "effect": { "type": "stat", "targetId": "stability", "formulaExpression": "-5" }
               }
             ]
@@ -278,8 +285,14 @@ public sealed class GameProjectValidationTests
         Assert.Equal("The border shimmers.", worldState.AmbientEvents[0].Text);
         Assert.Equal("action", worldState.AmbientEvents[1].Trigger);
         Assert.Equal("turnEnd", worldState.AmbientEvents[2].Trigger);
+        Assert.Equal("worldAspect", worldState.AmbientEvents[0].Requirements[0].Type);
+        Assert.Equal(0, worldState.AmbientEvents[0].Requirements[0].Value);
+        Assert.Equal("fluctuating", worldState.AmbientEvents[0].Requirements[0].StringValue);
         Assert.Equal("turnEnd", worldState.Rules[0].Trigger);
         Assert.Equal(50, worldState.Rules[0].ChancePercent);
+        Assert.Equal(0, worldState.Rules[0].Requirements[0].Value);
+        Assert.Equal("unstable", worldState.Rules[0].Requirements[0].StringValue);
+        Assert.Equal(10, worldState.Rules[0].Requirements[1].Value);
         Assert.Single(worldState.Rules[0].Effects);
         Assert.Equal("stability", worldState.Rules[0].Effects[0].TargetId);
         Assert.True(warnings.Count >= 6);

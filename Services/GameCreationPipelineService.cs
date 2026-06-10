@@ -1231,6 +1231,7 @@ internal sealed class GameCreationPipelineService
                 continue;
             }
 
+            NormalizeRequirementArray(action["requirements"] as JsonArray, $"$.actions[{actionIndex}].requirements", warnings, log);
             NormalizeAmountArray(action["costs"] as JsonArray, $"$.actions[{actionIndex}].costs", warnings, log);
             NormalizeAmountArray(action["effects"] as JsonArray, $"$.actions[{actionIndex}].effects", warnings, log);
         }
@@ -1287,6 +1288,7 @@ internal sealed class GameCreationPipelineService
             NormalizeTriggerProperty(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}].trigger", warnings, log);
             NormalizeProbabilityProperty(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}]", warnings, log);
             NormalizeAmbientEventText(ambientEvent, eventIndex, warnings, log);
+            NormalizeRequirementArray(ambientEvent["requirements"] as JsonArray, $"$.worldState.ambientEvents[{eventIndex}].requirements", warnings, log);
             NormalizeAmountArray(ambientEvent["effects"] as JsonArray, $"$.worldState.ambientEvents[{eventIndex}].effects", warnings, log);
         }
     }
@@ -1307,6 +1309,7 @@ internal sealed class GameCreationPipelineService
 
             NormalizeTriggerProperty(rule, $"$.worldState.rules[{ruleIndex}].trigger", warnings, log);
             NormalizeProbabilityProperty(rule, $"$.worldState.rules[{ruleIndex}]", warnings, log);
+            NormalizeRequirementArray(rule["requirements"] as JsonArray, $"$.worldState.rules[{ruleIndex}].requirements", warnings, log);
             NormalizeSingularEffect(rule, $"$.worldState.rules[{ruleIndex}]", warnings, log);
             NormalizeAmountArray(rule["effects"] as JsonArray, $"$.worldState.rules[{ruleIndex}].effects", warnings, log);
         }
@@ -1421,6 +1424,119 @@ internal sealed class GameCreationPipelineService
         return item[propertyName] is JsonValue value && value.TryGetValue<string>(out var text)
             ? text
             : string.Empty;
+    }
+
+    private static void NormalizeRequirementArray(JsonArray? requirements, string path, List<string> warnings, Action<string>? log)
+    {
+        if (requirements == null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < requirements.Count; index++)
+        {
+            if (requirements[index] is not JsonObject requirement)
+            {
+                continue;
+            }
+
+            NormalizeRequirementType(requirement, $"{path}[{index}].type", warnings, log);
+            NormalizeRequirementValue(requirement, $"{path}[{index}].value", warnings, log);
+        }
+    }
+
+    private static void NormalizeRequirementType(JsonObject requirement, string path, List<string> warnings, Action<string>? log)
+    {
+        if (requirement["type"] is not JsonValue typeValue || !typeValue.TryGetValue<string>(out var typeText))
+        {
+            return;
+        }
+
+        if (string.Equals(typeText, "locationState", StringComparison.OrdinalIgnoreCase)
+            && GetJsonString(requirement, "targetId").StartsWith("aspect_", StringComparison.OrdinalIgnoreCase))
+        {
+            requirement["type"] = "worldAspect";
+            AddNormalizationWarning(warnings, log, $"{path}: locationState for aspect target was normalized to worldAspect.");
+        }
+    }
+
+    private static void NormalizeRequirementValue(JsonObject requirement, string path, List<string> warnings, Action<string>? log)
+    {
+        if (requirement["value"] is not JsonValue value)
+        {
+            return;
+        }
+
+        if (value.TryGetValue<int>(out _))
+        {
+            return;
+        }
+
+        if (value.TryGetValue<double>(out var doubleValue))
+        {
+            requirement["value"] = (int)Math.Round(doubleValue);
+            AddNormalizationWarning(warnings, log, $"{path}: numeric value was rounded to integer.");
+            return;
+        }
+
+        if (!value.TryGetValue<string>(out var rawValue))
+        {
+            return;
+        }
+
+        rawValue = rawValue.Trim();
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            requirement["value"] = 0;
+            AddNormalizationWarning(warnings, log, $"{path}: empty string value was normalized to 0.");
+            return;
+        }
+
+        if (int.TryParse(rawValue, out var integerValue))
+        {
+            requirement["value"] = integerValue;
+            return;
+        }
+
+        if (double.TryParse(rawValue, out var parsedDoubleValue))
+        {
+            requirement["value"] = (int)Math.Round(parsedDoubleValue);
+            AddNormalizationWarning(warnings, log, $"{path}: numeric string value was rounded to integer.");
+            return;
+        }
+
+        if (IsFormulaId(rawValue))
+        {
+            SetIfEmpty(requirement, "formulaId", rawValue);
+            requirement["value"] = 0;
+            AddNormalizationWarning(warnings, log, $"{path}: formula id was moved from value to formulaId; value set to 0.");
+            return;
+        }
+
+        if (LooksLikeFormulaExpression(rawValue))
+        {
+            SetIfEmpty(requirement, "formulaExpression", rawValue);
+            requirement["value"] = 0;
+            AddNormalizationWarning(warnings, log, $"{path}: formula/expression string was moved from value to formulaExpression; value set to 0.");
+            return;
+        }
+
+        SetIfEmpty(requirement, "stringValue", rawValue);
+        requirement["value"] = 0;
+        AddNormalizationWarning(warnings, log, $"{path}: string value was moved from value to stringValue; value set to 0.");
+    }
+
+    private static bool LooksLikeFormulaExpression(string value)
+    {
+        return value.Contains('(')
+            || value.Contains('+')
+            || value.Contains('-')
+            || value.Contains('*')
+            || value.Contains('/')
+            || value.Contains('.')
+            || value.Contains('>')
+            || value.Contains('<')
+            || value.Contains('=');
     }
 
     private static void NormalizeAmountArray(JsonArray? items, string path, List<string> warnings, Action<string>? log)
