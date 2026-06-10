@@ -299,6 +299,72 @@ public sealed class GameProjectValidationTests
     }
 
     [Fact]
+    public void GeneratedWorldStateJsonNormalizer_AddsMissingAspectStates()
+    {
+        var raw = """
+        {
+          "worldState": {
+            "enabled": true,
+            "genreProfile": "fantasy",
+            "time": {
+              "enabled": true,
+              "startSegmentId": "hour_00",
+              "segments": [
+                { "id": "hour_00", "name": "Midnight" }
+              ]
+            },
+            "aspects": [
+              { "id": "aspect_border_instability", "name": "Border", "stateId": "stable" },
+              { "id": "aspect_world_tension", "name": "Tension", "defaultStateId": "low" }
+            ],
+            "ambientEvents": [
+              {
+                "id": "event_border_hum",
+                "name": "Border hum",
+                "trigger": "turnEnd",
+                "chancePercent": 30,
+                "text": "The border hums.",
+                "requirements": [
+                  { "type": "worldAspect", "targetId": "aspect_border_instability", "operator": "==", "value": 0, "stringValue": "unstable" }
+                ]
+              }
+            ],
+            "rules": [
+              {
+                "id": "rule_border_drain",
+                "name": "Border drain",
+                "trigger": "turnEnd",
+                "effects": [
+                  { "type": "worldAspect", "targetId": "aspect_world_tension", "amount": 0, "stringValue": "high" }
+                ],
+                "requirements": [
+                  { "type": "worldAspect", "targetId": "aspect_border_instability", "operator": "==", "value": 0, "stringValue": "unstable" }
+                ]
+              }
+            ]
+          }
+        }
+        """;
+        var warnings = new List<string>();
+
+        var normalized = GameCreationPipelineService.NormalizeGeneratedProjectJsonAmountsForTests(raw, warnings);
+        var project = JsonSerializer.Deserialize<GameProjectData>(normalized, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var result = new GameProjectValidator().Validate(project!);
+
+        Assert.NotNull(project);
+        var border = Assert.Single(project!.WorldState.Aspects, x => x.Id == "aspect_border_instability");
+        Assert.Equal("stable", border.DefaultStateId);
+        Assert.Contains(border.States, x => x.Id == "stable");
+        Assert.Contains(border.States, x => x.Id == "unstable");
+        var tension = Assert.Single(project.WorldState.Aspects, x => x.Id == "aspect_world_tension");
+        Assert.Contains(tension.States, x => x.Id == "low");
+        Assert.Contains(tension.States, x => x.Id == "high");
+        Assert.DoesNotContain(result.Errors, x => x.Contains("missing DefaultStateId", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.Errors, x => x.Contains("points to missing state", StringComparison.OrdinalIgnoreCase));
+        Assert.True(warnings.Any(x => x.Contains("added missing world aspect state", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
     public void CloneService_PreservesIdentityOnCopyMutableData()
     {
         var target = TestProjects.CreatePlayableProject();

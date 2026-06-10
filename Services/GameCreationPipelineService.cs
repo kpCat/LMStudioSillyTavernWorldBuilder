@@ -1247,6 +1247,7 @@ internal sealed class GameCreationPipelineService
         NormalizeWorldAspects(worldState["aspects"] as JsonArray, warnings, log);
         NormalizeAmbientEvents(worldState["ambientEvents"] as JsonArray, warnings, log);
         NormalizeWorldRules(worldState["rules"] as JsonArray, warnings, log);
+        EnsureWorldAspectStates(worldState, warnings, log);
     }
 
     private static void NormalizeWorldAspects(JsonArray? aspects, List<string> warnings, Action<string>? log)
@@ -1313,6 +1314,184 @@ internal sealed class GameCreationPipelineService
             NormalizeSingularEffect(rule, $"$.worldState.rules[{ruleIndex}]", warnings, log);
             NormalizeAmountArray(rule["effects"] as JsonArray, $"$.worldState.rules[{ruleIndex}].effects", warnings, log);
         }
+    }
+
+    private static void EnsureWorldAspectStates(JsonObject worldState, List<string> warnings, Action<string>? log)
+    {
+        if (worldState["aspects"] is not JsonArray aspects)
+        {
+            return;
+        }
+
+        var aspectMap = new Dictionary<string, JsonObject>(StringComparer.OrdinalIgnoreCase);
+        for (var aspectIndex = 0; aspectIndex < aspects.Count; aspectIndex++)
+        {
+            if (aspects[aspectIndex] is not JsonObject aspect)
+            {
+                continue;
+            }
+
+            var aspectId = GetJsonString(aspect, "id");
+            if (string.IsNullOrWhiteSpace(aspectId))
+            {
+                continue;
+            }
+
+            aspectMap[aspectId] = aspect;
+            EnsureAspectStateArray(aspect);
+
+            var defaultStateId = GetJsonString(aspect, "defaultStateId");
+            if (!string.IsNullOrWhiteSpace(defaultStateId))
+            {
+                EnsureAspectState(aspect, defaultStateId, $"$.worldState.aspects[{aspectIndex}].defaultStateId", warnings, log);
+                continue;
+            }
+
+            if (aspect["states"] is JsonArray states && states.Count > 0 && states[0] is JsonObject firstState)
+            {
+                var firstStateId = GetJsonString(firstState, "id");
+                if (!string.IsNullOrWhiteSpace(firstStateId))
+                {
+                    aspect["defaultStateId"] = firstStateId;
+                    AddNormalizationWarning(warnings, log, $"$.worldState.aspects[{aspectIndex}].defaultStateId: filled from first state '{firstStateId}'.");
+                }
+            }
+        }
+
+        EnsureReferencedWorldAspectStates(worldState["ambientEvents"] as JsonArray, aspectMap, "$.worldState.ambientEvents", warnings, log);
+        EnsureReferencedWorldAspectStates(worldState["rules"] as JsonArray, aspectMap, "$.worldState.rules", warnings, log);
+    }
+
+    private static void EnsureReferencedWorldAspectStates(JsonArray? owners, Dictionary<string, JsonObject> aspectMap, string path, List<string> warnings, Action<string>? log)
+    {
+        if (owners == null)
+        {
+            return;
+        }
+
+        for (var ownerIndex = 0; ownerIndex < owners.Count; ownerIndex++)
+        {
+            if (owners[ownerIndex] is not JsonObject owner)
+            {
+                continue;
+            }
+
+            EnsureReferencedWorldAspectStatesFromRequirements(owner["requirements"] as JsonArray, aspectMap, $"{path}[{ownerIndex}].requirements", warnings, log);
+            EnsureReferencedWorldAspectStatesFromEffects(owner["effects"] as JsonArray, aspectMap, $"{path}[{ownerIndex}].effects", warnings, log);
+        }
+    }
+
+    private static void EnsureReferencedWorldAspectStatesFromRequirements(JsonArray? requirements, Dictionary<string, JsonObject> aspectMap, string path, List<string> warnings, Action<string>? log)
+    {
+        if (requirements == null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < requirements.Count; index++)
+        {
+            if (requirements[index] is not JsonObject requirement || !IsWorldAspectType(GetJsonString(requirement, "type")))
+            {
+                continue;
+            }
+
+            var aspectId = GetJsonString(requirement, "targetId");
+            var stateId = GetJsonString(requirement, "stringValue");
+            if (string.IsNullOrWhiteSpace(stateId))
+            {
+                stateId = GetJsonString(requirement, "text");
+            }
+
+            EnsureReferencedAspectState(aspectMap, aspectId, stateId, $"{path}[{index}]", warnings, log);
+        }
+    }
+
+    private static void EnsureReferencedWorldAspectStatesFromEffects(JsonArray? effects, Dictionary<string, JsonObject> aspectMap, string path, List<string> warnings, Action<string>? log)
+    {
+        if (effects == null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < effects.Count; index++)
+        {
+            if (effects[index] is not JsonObject effect || !IsWorldAspectType(GetJsonString(effect, "type")))
+            {
+                continue;
+            }
+
+            var aspectId = GetJsonString(effect, "targetId");
+            var stateId = GetJsonString(effect, "stringValue");
+            if (string.IsNullOrWhiteSpace(stateId) && effect["parameters"] is JsonObject parameters)
+            {
+                stateId = GetJsonString(parameters, "stateId");
+            }
+            if (string.IsNullOrWhiteSpace(stateId))
+            {
+                stateId = GetJsonString(effect, "text");
+            }
+
+            EnsureReferencedAspectState(aspectMap, aspectId, stateId, $"{path}[{index}]", warnings, log);
+        }
+    }
+
+    private static bool IsWorldAspectType(string type)
+    {
+        return string.Equals(type, "worldState", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(type, "worldAspect", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void EnsureReferencedAspectState(Dictionary<string, JsonObject> aspectMap, string aspectId, string stateId, string path, List<string> warnings, Action<string>? log)
+    {
+        if (string.IsNullOrWhiteSpace(aspectId) || string.IsNullOrWhiteSpace(stateId) || !aspectMap.TryGetValue(aspectId, out var aspect))
+        {
+            return;
+        }
+
+        EnsureAspectState(aspect, stateId, path, warnings, log);
+    }
+
+    private static void EnsureAspectStateArray(JsonObject aspect)
+    {
+        if (aspect["states"] is JsonArray)
+        {
+            return;
+        }
+
+        aspect["states"] = new JsonArray();
+    }
+
+    private static void EnsureAspectState(JsonObject aspect, string stateId, string path, List<string> warnings, Action<string>? log)
+    {
+        if (string.IsNullOrWhiteSpace(stateId))
+        {
+            return;
+        }
+
+        EnsureAspectStateArray(aspect);
+        var states = aspect["states"] as JsonArray;
+        if (states == null)
+        {
+            return;
+        }
+
+        if (states.Any(node => node is JsonObject state && string.Equals(GetJsonString(state, "id"), stateId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        states.Add(new JsonObject
+        {
+            ["id"] = stateId,
+            ["name"] = BuildStateDisplayName(stateId),
+            ["description"] = "Автоматически добавленное состояние мира из draft-нормализации."
+        });
+        AddNormalizationWarning(warnings, log, $"{path}: added missing world aspect state '{stateId}'.");
+    }
+
+    private static string BuildStateDisplayName(string stateId)
+    {
+        return stateId.Trim().Replace('_', ' ');
     }
 
     private static void NormalizeTriggerProperty(JsonObject owner, string path, List<string> warnings, Action<string>? log)

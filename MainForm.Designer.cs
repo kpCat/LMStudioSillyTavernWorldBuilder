@@ -799,7 +799,7 @@ partial class MainForm
         btnNewGame.Dock = DockStyle.Fill;
         btnNewGame.Location = new Point(3, 3);
         btnNewGame.Name = "btnNewGame";
-        btnNewGame.Size = new Size(249, 36);
+        btnNewGame.Size = new Size(198, 36);
         btnNewGame.TabIndex = 0;
         btnNewGame.Text = "Новая";
         btnNewGame.Click += btnNewGame_Click;
@@ -807,9 +807,9 @@ partial class MainForm
         // btnLoadGame
         // 
         btnLoadGame.Dock = DockStyle.Fill;
-        btnLoadGame.Location = new Point(258, 3);
+        btnLoadGame.Location = new Point(207, 3);
         btnLoadGame.Name = "btnLoadGame";
-        btnLoadGame.Size = new Size(249, 36);
+        btnLoadGame.Size = new Size(198, 36);
         btnLoadGame.TabIndex = 1;
         btnLoadGame.Text = "Открыть";
         btnLoadGame.Click += btnLoadGame_Click;
@@ -817,9 +817,9 @@ partial class MainForm
         // btnSaveGame
         // 
         btnSaveGame.Dock = DockStyle.Fill;
-        btnSaveGame.Location = new Point(513, 3);
+        btnSaveGame.Location = new Point(411, 3);
         btnSaveGame.Name = "btnSaveGame";
-        btnSaveGame.Size = new Size(249, 36);
+        btnSaveGame.Size = new Size(198, 36);
         btnSaveGame.TabIndex = 2;
         btnSaveGame.Text = "Сохранить";
         btnSaveGame.Click += btnSaveGame_Click;
@@ -827,9 +827,9 @@ partial class MainForm
         // btnSaveGameAs
         // 
         btnSaveGameAs.Dock = DockStyle.Fill;
-        btnSaveGameAs.Location = new Point(768, 3);
+        btnSaveGameAs.Location = new Point(615, 3);
         btnSaveGameAs.Name = "btnSaveGameAs";
-        btnSaveGameAs.Size = new Size(250, 36);
+        btnSaveGameAs.Size = new Size(198, 36);
         btnSaveGameAs.TabIndex = 3;
         btnSaveGameAs.Text = "Сохранить как";
         btnSaveGameAs.Click += btnSaveGameAs_Click;
@@ -839,7 +839,7 @@ partial class MainForm
         btnOpenDraftsFolder.Dock = DockStyle.Fill;
         btnOpenDraftsFolder.Location = new Point(3, 45);
         btnOpenDraftsFolder.Name = "btnOpenDraftsFolder";
-        btnOpenDraftsFolder.Size = new Size(249, 36);
+        btnOpenDraftsFolder.Size = new Size(198, 36);
         btnOpenDraftsFolder.TabIndex = 4;
         btnOpenDraftsFolder.Text = "Drafts";
         btnOpenDraftsFolder.Click += btnOpenDraftsFolder_Click;
@@ -847,9 +847,9 @@ partial class MainForm
         // btnOpenDataFolder
         // 
         btnOpenDataFolder.Dock = DockStyle.Fill;
-        btnOpenDataFolder.Location = new Point(258, 45);
+        btnOpenDataFolder.Location = new Point(207, 45);
         btnOpenDataFolder.Name = "btnOpenDataFolder";
-        btnOpenDataFolder.Size = new Size(249, 36);
+        btnOpenDataFolder.Size = new Size(198, 36);
         btnOpenDataFolder.TabIndex = 5;
         btnOpenDataFolder.Text = "Data";
         btnOpenDataFolder.Click += btnOpenDataFolder_Click;
@@ -857,9 +857,9 @@ partial class MainForm
         // btnResaveSplitJson
         // 
         btnResaveSplitJson.Dock = DockStyle.Fill;
-        btnResaveSplitJson.Location = new Point(513, 45);
+        btnResaveSplitJson.Location = new Point(411, 45);
         btnResaveSplitJson.Name = "btnResaveSplitJson";
-        btnResaveSplitJson.Size = new Size(249, 36);
+        btnResaveSplitJson.Size = new Size(198, 36);
         btnResaveSplitJson.TabIndex = 6;
         btnResaveSplitJson.Text = "Split-json";
         btnResaveSplitJson.Click += btnResaveSplitJson_Click;
@@ -867,9 +867,9 @@ partial class MainForm
         // btnValidateProject
         // 
         btnValidateProject.Dock = DockStyle.Fill;
-        btnValidateProject.Location = new Point(768, 45);
+        btnValidateProject.Location = new Point(615, 45);
         btnValidateProject.Name = "btnValidateProject";
-        btnValidateProject.Size = new Size(250, 36);
+        btnValidateProject.Size = new Size(198, 36);
         btnValidateProject.TabIndex = 7;
         btnValidateProject.Text = "Проверить";
         btnValidateProject.Click += btnValidateProject_Click;

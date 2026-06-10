@@ -956,6 +956,14 @@ LLM генерирует только data-driven draft: worldState, formulas, v
 Поддержанные requirement/effect types для атмосферы: timeSegment, dayNumber, worldState, worldAspect, advanceTime.
 Для worldState/worldAspect указывай aspect id в TargetId, state id в StringValue.
 
+Жёсткая schema для worldState.aspects:
+- У каждого aspect должен быть defaultStateId и states array.
+- states array обязан содержать состояние с id=defaultStateId.
+- Если requirements/effects ссылаются на состояние через stringValue, это состояние тоже обязано быть в states array этого aspect.
+- Не используй одинокое stateId вместо defaultStateId.
+- BAD: { "id": "aspect_border_instability", "stateId": "stable" }
+- GOOD: { "id": "aspect_border_instability", "defaultStateId": "stable", "states": [{ "id": "stable", "name": "Стабильно" }, { "id": "unstable", "name": "Нестабильно" }] }
+
 Жёсткая schema для worldState.ambientEvents:
 - trigger must be a string only, never object.
 - Allowed trigger strings: "turnEnd", "travel", "action". If you think about actionEnd, output "action".
