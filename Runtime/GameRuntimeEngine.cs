@@ -64,6 +64,11 @@ internal sealed class GameRuntimeEngine
 
     public IReadOnlyList<GameChoice> GetAvailableChoices(GameProjectData project, SaveGame save)
     {
+        if (save.Combat.IsActive)
+        {
+            return new List<GameChoice>();
+        }
+
         return GetCurrentScene(project, save).Choices
             .Where(choice => choice.Conditions.All(condition => CheckRequirement(project, save, ToRequirement(condition))))
             .ToList();
