@@ -1380,7 +1380,35 @@ internal sealed class GameRuntimeEngine
             .Where(x => ActorTeamMatches(x, actor))
             .Where(x => actor.ActionIds.Count == 0 || actor.ActionIds.Contains(x.Id, StringComparer.OrdinalIgnoreCase))
             .Where(x => actor.ActionCooldowns.GetValueOrDefault(x.Id) <= 0)
+            .Where(x => IsCombatActionAvailableForActor(project, save, actor, x))
             .ToList();
+    }
+
+    private bool IsCombatActionAvailableForActor(GameProjectData project, SaveGame save, GameRuntimeCombatant actor, GameActionDefinition action)
+    {
+        if (!IsEnemy(actor))
+        {
+            var failedRequirement = action.Requirements
+                .Select(req => CheckRequirementDetailed(project, save, req))
+                .FirstOrDefault(x => !x.Success);
+            if (failedRequirement != null)
+            {
+                return false;
+            }
+        }
+
+        var costs = ResolveCostsForExecution(project, save, action.Costs);
+        if (!costs.Success)
+        {
+            return false;
+        }
+
+        if (IsEnemy(actor))
+        {
+            return CanPayCombatantCosts(actor, costs.Value).Success;
+        }
+
+        return CanPayResolvedCosts(project, save, costs.Value).Success;
     }
 
     public GameRuntimeCombatant? GetCurrentCombatant(GameProjectData project, SaveGame save)
