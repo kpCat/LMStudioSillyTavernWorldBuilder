@@ -1922,17 +1922,31 @@ public partial class MainForm : Form
         txtSceneText.Text = scene.Text;
         LoadSceneImage(scene);
 
-        foreach (var choice in _runtimeEngine.GetAvailableChoices(_currentProject, _currentSave))
+        if (_currentSave.Combat.IsActive)
         {
             var button = new Button
             {
-                Text = choice.Text,
-                Width = 520,
+                Text = "Идёт бой. Выберите действие и цель на вкладке 'Бой' или нажмите 'Конец хода'.",
+                Width = 820,
                 Height = 38,
-                Tag = choice.Id
+                Enabled = false
             };
-            button.Click += ChoiceButton_Click;
             pnlChoices.Controls.Add(button);
+        }
+        else
+        {
+            foreach (var choice in _runtimeEngine.GetAvailableChoices(_currentProject, _currentSave))
+            {
+                var button = new Button
+                {
+                    Text = choice.Text,
+                    Width = 520,
+                    Height = 38,
+                    Tag = choice.Id
+                };
+                button.Click += ChoiceButton_Click;
+                pnlChoices.Controls.Add(button);
+            }
         }
 
         FillList(lvRuntimeStats, BuildRuntimeCharacterRows(_currentProject, _currentSave));
@@ -1940,6 +1954,10 @@ public partial class MainForm : Form
         FillList(lvRuntimeRelationships, _currentSave.Relationships.Select(x => (x.Key, FindRelationshipName(_currentProject, x.Key), x.Value.ToString())), ("empty", "Нет отношений", "Нет данных"));
         FillList(lvRuntimeQuests, _currentSave.ActiveQuestIds.Select(x => (x, FindQuestName(_currentProject, x), "active")), ("empty", "Активных заданий нет", "Нет данных"));
         RefreshRuntimeCombatTab();
+        if (_currentSave.Combat.IsActive && tabRuntimeInfo.TabPages.Contains(tabRuntimeCombatPage))
+        {
+            tabRuntimeInfo.SelectedTab = tabRuntimeCombatPage;
+        }
         txtRuntimeLog.Text = string.Join(Environment.NewLine, _currentSave.EventLog);
         SetStatus(AppWorkflowStatus.Idle);
     }
@@ -1947,6 +1965,13 @@ public partial class MainForm : Form
     private async void ChoiceButton_Click(object? sender, EventArgs e)
     {
         if (_currentProject == null || _currentSave == null || sender is not Button { Tag: string choiceId }) return;
+        if (_currentSave.Combat.IsActive)
+        {
+            AppendLog("Сейчас идёт бой. Используйте вкладку 'Бой'.");
+            RefreshRuntimeViews();
+            return;
+        }
+
         var result = _runtimeEngine.ApplyChoiceWithResult(_currentProject, _currentSave, choiceId);
         AddOperationLog(result);
         if (result.Success)
@@ -2026,7 +2051,70 @@ public partial class MainForm : Form
             lvRuntimeCombatActions.Items.Add(item);
         }
 
+        SelectDefaultRuntimeCombatItems();
         RefreshRuntimeCombatButtons();
+    }
+
+    private void SelectDefaultRuntimeCombatItems()
+    {
+        if (_currentProject == null || _currentSave == null || !_currentSave.Combat.IsActive)
+        {
+            return;
+        }
+
+        if (lvRuntimeCombatActions.SelectedItems.Count == 0 && lvRuntimeCombatActions.Items.Count > 0)
+        {
+            lvRuntimeCombatActions.Items[0].Selected = true;
+        }
+
+        var actor = _runtimeEngine.GetCurrentCombatant(_currentProject, _currentSave);
+        var selectedActionId = lvRuntimeCombatActions.SelectedItems.Count > 0
+            ? lvRuntimeCombatActions.SelectedItems[0].Tag as string ?? lvRuntimeCombatActions.SelectedItems[0].Text
+            : string.Empty;
+        var action = _currentProject.Actions.FirstOrDefault(x => string.Equals(x.Id, selectedActionId, StringComparison.OrdinalIgnoreCase));
+        var targetRuntimeId = ResolvePreferredCombatTargetRuntimeId(_currentSave, actor, action);
+        if (string.IsNullOrWhiteSpace(targetRuntimeId) && lvRuntimeCombatants.Items.Count > 0)
+        {
+            targetRuntimeId = lvRuntimeCombatants.Items[0].Tag as string ?? lvRuntimeCombatants.Items[0].Text;
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetRuntimeId))
+        {
+            foreach (ListViewItem item in lvRuntimeCombatants.Items)
+            {
+                var runtimeId = item.Tag as string ?? item.Text;
+                item.Selected = string.Equals(runtimeId, targetRuntimeId, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    private static string ResolvePreferredCombatTargetRuntimeId(SaveGame save, GameRuntimeCombatant? actor, GameActionDefinition? action)
+    {
+        if (actor == null)
+        {
+            return string.Empty;
+        }
+
+        var scope = action?.TargetScope ?? string.Empty;
+        if (scope.Contains("self", StringComparison.OrdinalIgnoreCase) || scope.Contains("actor", StringComparison.OrdinalIgnoreCase))
+        {
+            return actor.RuntimeId;
+        }
+
+        var target = save.Combat.Combatants.FirstOrDefault(x =>
+            x.RuntimeId != actor.RuntimeId
+            && !string.Equals(x.Team, actor.Team, StringComparison.OrdinalIgnoreCase)
+            && x.Stats.Values.Any(value => value > 0));
+        if (target != null)
+        {
+            return target.RuntimeId;
+        }
+
+        target = string.Equals(actor.Team, "enemy", StringComparison.OrdinalIgnoreCase)
+            ? save.Combat.Combatants.FirstOrDefault(x => !string.Equals(x.Team, "enemy", StringComparison.OrdinalIgnoreCase))
+            : save.Combat.Combatants.FirstOrDefault(x => string.Equals(x.Team, "enemy", StringComparison.OrdinalIgnoreCase));
+
+        return target?.RuntimeId ?? actor.RuntimeId;
     }
 
     private void RefreshRuntimeCombatButtons()

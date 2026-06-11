@@ -180,6 +180,11 @@ internal sealed class GameRuntimeEngine
 
     public GameRuntimeOperationResult ApplyChoiceWithResult(GameProjectData project, SaveGame save, string choiceId)
     {
+        if (save.Combat.IsActive)
+        {
+            return OperationFailure("Сейчас идёт бой. Выберите действие на вкладке 'Бой' или завершите ход.");
+        }
+
         var scene = GetCurrentScene(project, save);
         var choice = scene.Choices.FirstOrDefault(x => string.Equals(x.Id, choiceId, StringComparison.OrdinalIgnoreCase));
         if (choice == null)

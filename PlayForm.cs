@@ -89,6 +89,20 @@ internal partial class PlayForm : Form
     private void RefreshChoices()
     {
         pnlChoices.Controls.Clear();
+        if (_save.Combat.IsActive)
+        {
+            var button = new Button
+            {
+                Text = "Идёт бой. Выберите действие и цель на вкладке 'Бой' или нажмите 'Конец хода'.",
+                Width = 720,
+                Height = 40,
+                Enabled = false
+            };
+            pnlChoices.Controls.Add(button);
+            SelectTab(tabCombat);
+            return;
+        }
+
         foreach (var choice in _runtimeEngine.GetAvailableChoices(_project, _save))
         {
             var button = new Button
@@ -142,6 +156,13 @@ internal partial class PlayForm : Form
     {
         if (sender is Button { Tag: string choiceId })
         {
+            if (_save.Combat.IsActive)
+            {
+                AddLog("Сейчас идёт бой. Используйте вкладку 'Бой'.");
+                RefreshPlayView();
+                return;
+            }
+
             var result = _runtimeEngine.ApplyChoiceWithResult(_project, _save, choiceId);
             AddOperationLog(result);
             if (result.Success)
@@ -517,7 +538,70 @@ internal partial class PlayForm : Form
             lvCombatActions.Items.Add(item);
         }
 
+        SelectDefaultCombatItems();
         RefreshCombatButtons();
+    }
+
+    private void SelectDefaultCombatItems()
+    {
+        if (!_save.Combat.IsActive)
+        {
+            return;
+        }
+
+        if (lvCombatActions.SelectedItems.Count == 0 && lvCombatActions.Items.Count > 0)
+        {
+            lvCombatActions.Items[0].Selected = true;
+        }
+
+        var actor = _runtimeEngine.GetCurrentCombatant(_project, _save);
+        var selectedActionId = lvCombatActions.SelectedItems.Count > 0
+            ? lvCombatActions.SelectedItems[0].Tag as string ?? lvCombatActions.SelectedItems[0].Text
+            : string.Empty;
+        var action = _project.Actions.FirstOrDefault(x => string.Equals(x.Id, selectedActionId, StringComparison.OrdinalIgnoreCase));
+        var targetRuntimeId = ResolvePreferredCombatTargetRuntimeId(_save, actor, action);
+        if (string.IsNullOrWhiteSpace(targetRuntimeId) && lvCombatants.Items.Count > 0)
+        {
+            targetRuntimeId = lvCombatants.Items[0].Tag as string ?? lvCombatants.Items[0].Text;
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetRuntimeId))
+        {
+            foreach (ListViewItem item in lvCombatants.Items)
+            {
+                var runtimeId = item.Tag as string ?? item.Text;
+                item.Selected = string.Equals(runtimeId, targetRuntimeId, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    private static string ResolvePreferredCombatTargetRuntimeId(SaveGame save, GameRuntimeCombatant? actor, GameActionDefinition? action)
+    {
+        if (actor == null)
+        {
+            return string.Empty;
+        }
+
+        var scope = action?.TargetScope ?? string.Empty;
+        if (scope.Contains("self", StringComparison.OrdinalIgnoreCase) || scope.Contains("actor", StringComparison.OrdinalIgnoreCase))
+        {
+            return actor.RuntimeId;
+        }
+
+        var target = save.Combat.Combatants.FirstOrDefault(x =>
+            x.RuntimeId != actor.RuntimeId
+            && !string.Equals(x.Team, actor.Team, StringComparison.OrdinalIgnoreCase)
+            && x.Stats.Values.Any(value => value > 0));
+        if (target != null)
+        {
+            return target.RuntimeId;
+        }
+
+        target = string.Equals(actor.Team, "enemy", StringComparison.OrdinalIgnoreCase)
+            ? save.Combat.Combatants.FirstOrDefault(x => !string.Equals(x.Team, "enemy", StringComparison.OrdinalIgnoreCase))
+            : save.Combat.Combatants.FirstOrDefault(x => string.Equals(x.Team, "enemy", StringComparison.OrdinalIgnoreCase));
+
+        return target?.RuntimeId ?? actor.RuntimeId;
     }
 
     private void RefreshCombatButtons()
