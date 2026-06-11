@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 
@@ -8,7 +9,8 @@ internal sealed class GameProjectManifestService
 {
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public GameProjectManifest BuildManifest(GameProjectData project)
@@ -76,7 +78,7 @@ internal sealed class GameProjectManifestService
         var builder = new StringBuilder(source.Length);
         foreach (var ch in source.ToLowerInvariant())
         {
-            builder.Append(char.IsLetterOrDigit(ch) || ch == '_' || ch == '-' ? ch : '_');
+            builder.Append(ch is >= 'a' and <= 'z' || ch is >= '0' and <= '9' || ch == '_' || ch == '-' ? ch : '_');
         }
 
         var safe = builder.ToString();
@@ -86,7 +88,13 @@ internal sealed class GameProjectManifestService
         }
 
         safe = safe.Trim('_', '-', '.', ' ');
-        return string.IsNullOrWhiteSpace(safe) ? Ids.New(fallbackPrefix) : safe;
+        if (!string.IsNullOrWhiteSpace(safe))
+        {
+            return safe;
+        }
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..8].ToLowerInvariant();
+        return fallbackPrefix + "_" + hash;
     }
 
     private static string EnsureId(string id, string fallbackPrefix, Action<string> assign)

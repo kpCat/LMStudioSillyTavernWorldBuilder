@@ -35,12 +35,8 @@ public partial class MainForm : Form
     private readonly GameCreationPipelineService _pipelineService;
     private readonly ExternalToolOrchestratorService _orchestratorService;
     private readonly IdeaDiscussionSession _discussionSession = new();
-    private static readonly JsonSerializerOptions UiJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private static readonly JsonSerializerOptions UiJsonOptions = GenerationJsonOptions.UiJson;
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     private GameProjectData? _currentProject;
     private SaveGame? _currentSave;
@@ -957,10 +953,13 @@ public partial class MainForm : Form
 
             SetStatus(AppWorkflowStatus.Saving);
             var beforeCombat = BuildCombatImpactSnapshot(project);
+            var beforeMvp = _mvpOrchestratorService.BuildReadinessReport(project);
             await _draftService.ApplyDraftAsync(project, draft, CurrentOperationToken);
             var afterCombat = BuildCombatImpactSnapshot(project);
+            var afterMvp = _mvpOrchestratorService.BuildReadinessReport(project);
             await _storageService.SaveProjectAsync(GetGamesRoot(), project, CurrentOperationToken);
             AppendLog("Draft применён: " + draft.SessionId);
+            AppendLog(BuildDraftApplyImpactText(draft, beforeMvp, afterMvp));
             AppendLog(BuildCombatApplyImpactText(draft, beforeCombat, afterCombat));
             RefreshAllViews();
             await RefreshPipelineDraftInfoAsync();
@@ -1088,10 +1087,12 @@ public partial class MainForm : Form
         txtPromptDetails.Text = prompt == null ? "" : JsonSerializer.Serialize(prompt, UiJsonOptions);
     }
 
-    private void btnNewRun_Click(object? sender, EventArgs e)
+    private async void btnNewRun_Click(object? sender, EventArgs e)
     {
         if (_currentProject == null) return;
         _currentSave = _storageService.CreateInitialSave(_currentProject, "autosave");
+        _storageService.SyncSaveWithProject(_currentProject, _currentSave);
+        await SaveAutosaveProgressAsync();
         RefreshRuntimeViews();
     }
 
@@ -1104,6 +1105,7 @@ public partial class MainForm : Form
         }
 
         _currentSave ??= _storageService.CreateInitialSave(_currentProject, "autosave");
+        _storageService.SyncSaveWithProject(_currentProject, _currentSave);
         using var form = new PlayForm(_currentProject, _currentSave, _runtimeEngine, _storageService);
         form.ShowDialog(this);
         RefreshRuntimeViews();
@@ -1336,6 +1338,8 @@ public partial class MainForm : Form
             _currentSave = File.Exists(autosave)
                 ? await _storageService.LoadProgressAsync(_currentProject, "autosave.json")
                 : _storageService.CreateInitialSave(_currentProject, "autosave");
+            _storageService.SyncSaveWithProject(_currentProject, _currentSave);
+            await _storageService.SaveProgressAsync(_currentProject, _currentSave, "autosave.json");
             AppendLog("Project loaded: " + _currentProject.Meta.Title);
             RefreshAllViews();
         }, AppWorkflowStatus.Idle);
@@ -1738,10 +1742,18 @@ public partial class MainForm : Form
     private string BuildDraftApplySummary(GameProjectData project, GameDraftSession draft)
     {
         var summary = ReadDraftCombatSummary(project, draft);
+        var fileCounts = draft.Files
+            .GroupBy(x => x.EntityType)
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => "- " + x.Key + ": +" + x.Count());
         var builder = new StringBuilder();
         builder.AppendLine();
         builder.AppendLine("Draft stage: " + draft.Stage);
         builder.AppendLine("Will add/update:");
+        foreach (var line in fileCounts)
+        {
+            builder.AppendLine(line);
+        }
         builder.AppendLine("- combat.enabled: " + (summary.CombatEnabled?.ToString().ToLowerInvariant() ?? "нет данных"));
         builder.AppendLine("- actions: +" + summary.Actions);
         builder.AppendLine("- availableInCombat actions: +" + summary.CombatActions);
@@ -1761,6 +1773,36 @@ public partial class MainForm : Form
         }
 
         return builder.ToString();
+    }
+
+    private static string BuildDraftApplyImpactText(GameDraftSession draft, GameMvpReadinessReport before, GameMvpReadinessReport after)
+    {
+        var stage = NormalizeDraftStageForMvp(draft.Stage);
+        var beforeStage = before.Stages.FirstOrDefault(x => string.Equals(x.Stage, stage, StringComparison.OrdinalIgnoreCase));
+        var afterStage = after.Stages.FirstOrDefault(x => string.Equals(x.Stage, stage, StringComparison.OrdinalIgnoreCase));
+        var builder = new StringBuilder();
+        builder.AppendLine("Draft applied: " + draft.SessionId);
+        if (beforeStage != null && afterStage != null)
+        {
+            builder.AppendLine("MVP stage " + stage + ": " + beforeStage.ExistingCount + "/" + beforeStage.TargetMinimum
+                + " -> " + afterStage.ExistingCount + "/" + afterStage.TargetMinimum
+                + ", " + (afterStage.IsSatisfied ? "satisfied" : "not satisfied"));
+        }
+
+        builder.AppendLine("Next stage: " + (after.NextRecommendedStage ?? "none"));
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string NormalizeDraftStageForMvp(string stage)
+    {
+        return stage switch
+        {
+            "stats-resources" => "stats_resources",
+            "gameplay-actions" => "actions",
+            "world-state" => "world_state",
+            "random-director" or "random-events" or "ambient-events" => "random_events",
+            _ => stage.Replace('-', '_')
+        };
     }
 
     private DraftCombatSummary ReadDraftCombatSummary(GameProjectData project, GameDraftSession draft)
@@ -1894,21 +1936,153 @@ public partial class MainForm : Form
         }
 
         FillList(lvRuntimeStats, BuildRuntimeCharacterRows(_currentProject, _currentSave));
-        FillList(lvRuntimeInventory, _runtimeEngine.GetInventory(_currentProject, _currentSave).Select(x => (x.ItemId, FindName(_currentProject.Items, x.ItemId), x.IsEquipped ? "надето" : x.Quantity.ToString())));
-        FillList(lvRuntimeRelationships, _currentSave.Relationships.Select(x => (x.Key, FindRelationshipName(_currentProject, x.Key), x.Value.ToString())));
-        FillList(lvRuntimeQuests, _currentSave.ActiveQuestIds.Select(x => (x, FindQuestName(_currentProject, x), "active")));
+        FillList(lvRuntimeInventory, _runtimeEngine.GetInventory(_currentProject, _currentSave).Select(x => (x.ItemId, FindName(_currentProject.Items, x.ItemId), x.IsEquipped ? "надето" : x.Quantity.ToString())), ("empty", "Инвентарь пуст", "Нет предметов"));
+        FillList(lvRuntimeRelationships, _currentSave.Relationships.Select(x => (x.Key, FindRelationshipName(_currentProject, x.Key), x.Value.ToString())), ("empty", "Нет отношений", "Нет данных"));
+        FillList(lvRuntimeQuests, _currentSave.ActiveQuestIds.Select(x => (x, FindQuestName(_currentProject, x), "active")), ("empty", "Активных заданий нет", "Нет данных"));
+        RefreshRuntimeCombatTab();
         txtRuntimeLog.Text = string.Join(Environment.NewLine, _currentSave.EventLog);
         SetStatus(AppWorkflowStatus.Idle);
     }
 
-    private void ChoiceButton_Click(object? sender, EventArgs e)
+    private async void ChoiceButton_Click(object? sender, EventArgs e)
     {
         if (_currentProject == null || _currentSave == null || sender is not Button { Tag: string choiceId }) return;
-        if (_runtimeEngine.ApplyChoice(_currentProject, _currentSave, choiceId, out var message))
+        var result = _runtimeEngine.ApplyChoiceWithResult(_currentProject, _currentSave, choiceId);
+        AddOperationLog(result);
+        if (result.Success)
         {
-            AppendLog("Choice applied: " + message);
+            await SaveAutosaveProgressAsync();
         }
         RefreshRuntimeViews();
+    }
+
+    private async void btnRuntimeExecuteCombatAction_Click(object? sender, EventArgs e)
+    {
+        if (_currentProject == null || _currentSave == null || lvRuntimeCombatActions.SelectedItems.Count == 0 || lvRuntimeCombatants.SelectedItems.Count == 0)
+        {
+            return;
+        }
+
+        var actionId = lvRuntimeCombatActions.SelectedItems[0].Tag as string ?? lvRuntimeCombatActions.SelectedItems[0].Text;
+        var targetRuntimeId = lvRuntimeCombatants.SelectedItems[0].Tag as string ?? lvRuntimeCombatants.SelectedItems[0].Text;
+        var result = _runtimeEngine.ExecuteCombatActionWithResult(_currentProject, _currentSave, actionId, targetRuntimeId);
+        AddOperationLog(result);
+        if (result.Success)
+        {
+            await SaveAutosaveProgressAsync();
+        }
+        RefreshRuntimeViews();
+    }
+
+    private async void btnRuntimeEndCombatTurn_Click(object? sender, EventArgs e)
+    {
+        if (_currentProject == null || _currentSave == null)
+        {
+            return;
+        }
+
+        var result = _runtimeEngine.EndCombatTurnWithResult(_currentProject, _currentSave);
+        AddOperationLog(result);
+        if (result.Success)
+        {
+            await SaveAutosaveProgressAsync();
+        }
+        RefreshRuntimeViews();
+    }
+
+    private void lvRuntimeCombatSelectionChanged(object? sender, EventArgs e)
+    {
+        RefreshRuntimeCombatButtons();
+    }
+
+    private void RefreshRuntimeCombatTab()
+    {
+        if (_currentProject == null || _currentSave == null)
+        {
+            return;
+        }
+
+        lvRuntimeCombatants.Items.Clear();
+        lvRuntimeCombatActions.Items.Clear();
+        var healthStat = string.IsNullOrWhiteSpace(_currentProject.Combat?.PlayerHealthStatId) ? "health" : _currentProject.Combat.PlayerHealthStatId;
+        foreach (var combatant in _runtimeEngine.GetCombatants(_currentProject, _currentSave))
+        {
+            var item = new ListViewItem(string.IsNullOrWhiteSpace(combatant.Name) ? combatant.RuntimeId : combatant.Name);
+            item.SubItems.Add(combatant.Team);
+            item.SubItems.Add(combatant.Stats.GetValueOrDefault(healthStat).ToString());
+            item.SubItems.Add(combatant.Initiative.ToString());
+            item.SubItems.Add(string.Join(", ", combatant.ActiveStatusEffects.Select(x => x.StatusEffectId)));
+            item.Tag = combatant.RuntimeId;
+            lvRuntimeCombatants.Items.Add(item);
+        }
+
+        var actor = _runtimeEngine.GetCurrentCombatant(_currentProject, _currentSave);
+        foreach (var action in _runtimeEngine.GetAvailableCombatActions(_currentProject, _currentSave, actor))
+        {
+            var item = new ListViewItem(string.IsNullOrWhiteSpace(action.Name) ? action.Id : action.Name);
+            item.SubItems.Add(action.TargetScope);
+            item.SubItems.Add(action.Description);
+            item.Tag = action.Id;
+            lvRuntimeCombatActions.Items.Add(item);
+        }
+
+        RefreshRuntimeCombatButtons();
+    }
+
+    private void RefreshRuntimeCombatButtons()
+    {
+        if (_currentProject == null || _currentSave == null)
+        {
+            btnRuntimeExecuteCombatAction.Enabled = false;
+            btnRuntimeEndCombatTurn.Enabled = false;
+            lblRuntimeCombatHint.Text = "Бой не активен.";
+            return;
+        }
+
+        var actor = _runtimeEngine.GetCurrentCombatant(_currentProject, _currentSave);
+        var isPlayerTurn = actor != null && !string.Equals(actor.Team, "enemy", StringComparison.OrdinalIgnoreCase);
+        btnRuntimeExecuteCombatAction.Enabled = _currentSave.Combat.IsActive && isPlayerTurn && lvRuntimeCombatActions.SelectedItems.Count > 0 && lvRuntimeCombatants.SelectedItems.Count > 0;
+        btnRuntimeEndCombatTurn.Enabled = _currentSave.Combat.IsActive;
+        lblRuntimeCombatHint.Text = actor == null
+            ? "Бой не активен."
+            : "Ход: " + (string.IsNullOrWhiteSpace(actor.Name) ? actor.RuntimeId : actor.Name);
+    }
+
+    private async Task SaveAutosaveProgressAsync()
+    {
+        if (_currentProject == null || _currentSave == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _storageService.SaveProgressAsync(_currentProject, _currentSave, "autosave.json");
+            RefreshSaves();
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Autosave failed: " + ex.Message);
+        }
+    }
+
+    private void AddOperationLog(GameRuntimeOperationResult result)
+    {
+        if (result.LogLines.Count > 0)
+        {
+            foreach (var line in result.LogLines)
+            {
+                AppendLog(line);
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(result.Message))
+        {
+            AppendLog(result.Message);
+        }
+        if (!result.Success && !string.IsNullOrWhiteSpace(result.Message) && !result.LogLines.Contains(result.Message))
+        {
+            AppendLog(result.Message);
+        }
     }
 
     private IEnumerable<(string Id, string Name, string Description)> BuildRuntimeCharacterRows(GameProjectData project, SaveGame save)
@@ -2555,16 +2729,9 @@ public partial class MainForm : Form
         btnSetDefaultLmProfile.Enabled = !busy;
     }
 
-    private static void FillList(ListView listView, IEnumerable<(string Id, string Name, string Description)> rows)
+    private static void FillList(ListView listView, IEnumerable<(string Id, string Name, string Description)> rows, (string Id, string Name, string Description)? emptyRow = null)
     {
-        listView.Items.Clear();
-        foreach (var row in rows)
-        {
-            var item = new ListViewItem(row.Id);
-            item.SubItems.Add(row.Name);
-            item.SubItems.Add(row.Description);
-            listView.Items.Add(item);
-        }
+        PlayListViewHelper.FillList(listView, rows, emptyRow);
     }
 
     private static string FindName(IEnumerable<GameStatDefinition> source, string id)

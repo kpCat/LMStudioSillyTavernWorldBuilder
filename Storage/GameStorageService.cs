@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Services;
@@ -10,9 +11,11 @@ internal sealed class GameStorageService
     private readonly GameProjectManifestService _manifestService = new();
     private readonly GameChangeLogService _changeLogService = new();
     private readonly GameProjectValidator _validator = new();
+    private readonly GameProjectRepairService _repairService = new();
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public string GetDefaultGamesRoot()
@@ -49,6 +52,7 @@ internal sealed class GameStorageService
 
     public async Task SaveProjectAsync(string gamesRoot, GameProjectData project, CancellationToken cancellationToken = default)
     {
+        _repairService.ApplySafeRepairs(project, _ => { }, GameProjectRepairMode.FullProject);
         var projectFolder = GetProjectFolder(gamesRoot, project);
         EnsureProjectDirectories(projectFolder);
         BackupLegacyRootIfNeeded(projectFolder);
@@ -121,6 +125,7 @@ internal sealed class GameStorageService
             project.Summary.ProjectPath = projectFolder;
         }
 
+        _repairService.ApplySafeRepairs(project, _ => { }, GameProjectRepairMode.FullProject);
         _validator.Validate(project);
         return project;
     }
@@ -221,7 +226,7 @@ internal sealed class GameStorageService
             Id = Ids.New("save"),
             ProjectId = project.Meta.Id,
             Name = name,
-            CurrentSceneId = project.Meta.StartSceneId,
+            CurrentSceneId = GameSceneSafety.ResolvePlayableStartScene(project, project.Meta.StartSceneId)?.Id ?? project.Meta.StartSceneId,
             PlayerStats = project.Stats.Where(x => !string.IsNullOrWhiteSpace(x.Id)).ToDictionary(x => x.Id, x => x.InitialValue),
             Currencies = project.Currencies.Where(x => !string.IsNullOrWhiteSpace(x.Id)).ToDictionary(x => x.Id, x => x.InitialAmount),
             Relationships = project.Relationships.Where(x => !string.IsNullOrWhiteSpace(x.CharacterId)).ToDictionary(x => x.CharacterId, x => x.InitialValue),
@@ -232,7 +237,8 @@ internal sealed class GameStorageService
             PlayerLevel = Math.Max(1, project.Mechanics.Experience.InitialPlayerLevel),
             PlayerExperience = Math.Max(0, project.Mechanics.Experience.InitialPlayerExperience),
             UnlockedProgressionNodeIds = project.ProgressionNodes.Where(x => x.IsUnlockedByDefault).Select(x => x.Id).ToList(),
-            CurrentLocationId = project.Scenes.FirstOrDefault(x => x.Id == project.Meta.StartSceneId)?.LocationId
+            CurrentLocationId = GameSceneSafety.ResolvePlayableStartScene(project, project.Meta.StartSceneId)?.LocationId
+                ?? project.Scenes.FirstOrDefault(x => x.Id == project.Meta.StartSceneId)?.LocationId
                 ?? project.Locations.FirstOrDefault(x => x.IsDiscovered)?.Id
                 ?? project.Locations.FirstOrDefault()?.Id
                 ?? string.Empty,
@@ -240,6 +246,7 @@ internal sealed class GameStorageService
             Variables = project.Variables.Where(x => !string.IsNullOrWhiteSpace(x.Id)).ToDictionary(x => x.Id, x => x.InitialValue)
         };
         InitializeWorldState(project, save);
+        SyncSaveWithProject(project, save);
         return save;
     }
 
@@ -247,6 +254,7 @@ internal sealed class GameStorageService
     {
         var projectFolder = GetProjectFolderFromProject(project);
         Directory.CreateDirectory(Path.Combine(projectFolder, "saves"));
+        SyncSaveWithProject(project, saveGame);
         saveGame.SavedAtUtc = DateTime.UtcNow;
         await WriteJsonAsync(Path.Combine(projectFolder, "saves", fileName), saveGame, cancellationToken);
     }
@@ -255,8 +263,81 @@ internal sealed class GameStorageService
     {
         var path = Path.Combine(GetProjectFolderFromProject(project), "saves", fileName);
         var json = await File.ReadAllTextAsync(path, cancellationToken);
-        return JsonSerializer.Deserialize<SaveGame>(json, _jsonOptions)
+        var save = JsonSerializer.Deserialize<SaveGame>(json, _jsonOptions)
             ?? throw new InvalidOperationException("Save JSON is empty or invalid.");
+        SyncSaveWithProject(project, save);
+        return save;
+    }
+
+    public void SyncSaveWithProject(GameProjectData project, SaveGame save)
+    {
+        save.ProjectId = string.IsNullOrWhiteSpace(save.ProjectId) ? project.Meta.Id : save.ProjectId;
+
+        foreach (var stat in project.Stats.Where(x => !string.IsNullOrWhiteSpace(x.Id)))
+        {
+            save.PlayerStats.TryAdd(stat.Id, stat.InitialValue);
+        }
+
+        foreach (var currency in project.Currencies.Where(x => !string.IsNullOrWhiteSpace(x.Id)))
+        {
+            save.Currencies.TryAdd(currency.Id, currency.InitialAmount);
+        }
+
+        foreach (var variable in project.Variables.Where(x => !string.IsNullOrWhiteSpace(x.Id)))
+        {
+            save.Variables.TryAdd(variable.Id, variable.InitialValue);
+        }
+
+        foreach (var relationship in project.Relationships.Where(x => !string.IsNullOrWhiteSpace(x.CharacterId)))
+        {
+            save.Relationships.TryAdd(relationship.CharacterId, relationship.InitialValue);
+        }
+
+        foreach (var skill in project.Skills.Where(x => (x.IsKnownByDefault || x.InitialLevel > 0) && !string.IsNullOrWhiteSpace(x.Id)))
+        {
+            if (!save.KnownSkills.Any(x => string.Equals(x.SkillId, skill.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                save.KnownSkills.Add(new GameKnownSkill { SkillId = skill.Id, Level = Math.Max(1, skill.InitialLevel), IsEnabled = true });
+            }
+        }
+
+        foreach (var node in project.ProgressionNodes.Where(x => x.IsUnlockedByDefault && !string.IsNullOrWhiteSpace(x.Id)))
+        {
+            if (!save.UnlockedProgressionNodeIds.Contains(node.Id, StringComparer.OrdinalIgnoreCase))
+            {
+                save.UnlockedProgressionNodeIds.Add(node.Id);
+            }
+        }
+
+        var resolvedScene = GameSceneSafety.ResolvePlayableStartScene(project, save.CurrentSceneId);
+        if (resolvedScene != null && !string.Equals(save.CurrentSceneId, resolvedScene.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            var old = save.CurrentSceneId;
+            save.CurrentSceneId = resolvedScene.Id;
+            if (!string.IsNullOrWhiteSpace(old))
+            {
+                save.EventLog.Add($"[{DateTime.Now:HH:mm:ss}] Runtime start scene repaired: old='{old}', new='{resolvedScene.Id}'.");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(save.CurrentLocationId))
+        {
+            save.CurrentLocationId = resolvedScene?.LocationId
+                ?? project.Locations.FirstOrDefault(x => x.IsDiscovered)?.Id
+                ?? project.Locations.FirstOrDefault()?.Id
+                ?? string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(save.CurrentLocationId)
+            && !save.DiscoveredLocationIds.Contains(save.CurrentLocationId, StringComparer.OrdinalIgnoreCase))
+        {
+            save.DiscoveredLocationIds.Add(save.CurrentLocationId);
+        }
+
+        if (save.WorldState.DayNumber <= 0)
+        {
+            InitializeWorldState(project, save);
+        }
     }
 
     public List<string> ListSaveFiles(GameProjectData project)
@@ -621,14 +702,8 @@ internal sealed class GameStorageService
 
     private static string MakeSafeFolderName(string title, string fallback)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var safe = new string(title.Where(ch => !invalid.Contains(ch)).ToArray()).Trim();
-        if (string.IsNullOrWhiteSpace(safe))
-        {
-            safe = fallback;
-        }
-
-        return safe.Length > 64 ? safe[..64] : safe;
+        var safe = GameProjectManifestService.SafeId(title, fallback);
+        return safe.Length > 64 ? safe[..64].Trim('_', '-') : safe;
     }
 
     private static void SeedStarterContent(GameProjectData project)
@@ -664,25 +739,9 @@ internal static class Ids
 
     public static string FromTitle(string title, string prefix)
     {
-        var letters = new string(title.ToLowerInvariant()
-            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '_')
-            .ToArray());
-        while (letters.Contains("__", StringComparison.Ordinal))
-        {
-            letters = letters.Replace("__", "_", StringComparison.Ordinal);
-        }
-
-        letters = letters.Trim('_');
-        if (string.IsNullOrWhiteSpace(letters))
-        {
-            letters = Guid.NewGuid().ToString("N")[..8];
-        }
-
-        if (letters.Length > 32)
-        {
-            letters = letters[..32].Trim('_');
-        }
-
-        return $"{prefix}_{letters}";
+        var slug = GameProjectManifestService.SafeId(title, prefix);
+        return slug.StartsWith(prefix + "_", StringComparison.OrdinalIgnoreCase)
+            ? slug
+            : $"{prefix}_{slug}";
     }
 }

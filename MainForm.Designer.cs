@@ -198,11 +198,20 @@ partial class MainForm
     private TabPage tabRuntimeInventoryPage = null!;
     private TabPage tabRuntimeRelationshipsPage = null!;
     private TabPage tabRuntimeQuestsPage = null!;
+    private TabPage tabRuntimeCombatPage = null!;
     private TabPage tabRuntimeLogPage = null!;
     private ListView lvRuntimeStats = null!;
     private ListView lvRuntimeInventory = null!;
     private ListView lvRuntimeRelationships = null!;
     private ListView lvRuntimeQuests = null!;
+    private TableLayoutPanel runtimeCombatLayout = null!;
+    private FlowLayoutPanel runtimeCombatButtons = null!;
+    private Button btnRuntimeExecuteCombatAction = null!;
+    private Button btnRuntimeEndCombatTurn = null!;
+    private Label lblRuntimeCombatHint = null!;
+    private SplitContainer runtimeCombatSplit = null!;
+    private ListView lvRuntimeCombatants = null!;
+    private ListView lvRuntimeCombatActions = null!;
     private TextBox txtRuntimeLog = null!;
 
     private TableLayoutPanel savesLayout = null!;
@@ -462,6 +471,15 @@ partial class MainForm
         lvRuntimeRelationships = new ListView();
         tabRuntimeQuestsPage = new TabPage();
         lvRuntimeQuests = new ListView();
+        tabRuntimeCombatPage = new TabPage();
+        runtimeCombatLayout = new TableLayoutPanel();
+        runtimeCombatButtons = new FlowLayoutPanel();
+        btnRuntimeExecuteCombatAction = new Button();
+        btnRuntimeEndCombatTurn = new Button();
+        lblRuntimeCombatHint = new Label();
+        runtimeCombatSplit = new SplitContainer();
+        lvRuntimeCombatants = new ListView();
+        lvRuntimeCombatActions = new ListView();
         tabRuntimeLogPage = new TabPage();
         txtRuntimeLog = new TextBox();
         tabSaves = new TabPage();
@@ -589,6 +607,13 @@ partial class MainForm
         tabRuntimeInventoryPage.SuspendLayout();
         tabRuntimeRelationshipsPage.SuspendLayout();
         tabRuntimeQuestsPage.SuspendLayout();
+        tabRuntimeCombatPage.SuspendLayout();
+        runtimeCombatLayout.SuspendLayout();
+        runtimeCombatButtons.SuspendLayout();
+        ((System.ComponentModel.ISupportInitialize)runtimeCombatSplit).BeginInit();
+        runtimeCombatSplit.Panel1.SuspendLayout();
+        runtimeCombatSplit.Panel2.SuspendLayout();
+        runtimeCombatSplit.SuspendLayout();
         tabRuntimeLogPage.SuspendLayout();
         tabSaves.SuspendLayout();
         savesLayout.SuspendLayout();
@@ -2580,6 +2605,7 @@ partial class MainForm
         tabRuntimeInfo.Controls.Add(tabRuntimeInventoryPage);
         tabRuntimeInfo.Controls.Add(tabRuntimeRelationshipsPage);
         tabRuntimeInfo.Controls.Add(tabRuntimeQuestsPage);
+        tabRuntimeInfo.Controls.Add(tabRuntimeCombatPage);
         tabRuntimeInfo.Controls.Add(tabRuntimeLogPage);
         tabRuntimeInfo.Dock = DockStyle.Fill;
         tabRuntimeInfo.Location = new Point(838, 3);
@@ -2669,13 +2695,129 @@ partial class MainForm
         lvRuntimeQuests.UseCompatibleStateImageBehavior = false;
         lvRuntimeQuests.View = View.Details;
         // 
+        // tabRuntimeCombatPage
+        // 
+        tabRuntimeCombatPage.Controls.Add(runtimeCombatLayout);
+        tabRuntimeCombatPage.Location = new Point(4, 24);
+        tabRuntimeCombatPage.Name = "tabRuntimeCombatPage";
+        tabRuntimeCombatPage.Size = new Size(417, 728);
+        tabRuntimeCombatPage.TabIndex = 4;
+        tabRuntimeCombatPage.Text = "Бой";
+        // 
+        // runtimeCombatLayout
+        // 
+        runtimeCombatLayout.ColumnCount = 1;
+        runtimeCombatLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        runtimeCombatLayout.Controls.Add(runtimeCombatButtons, 0, 0);
+        runtimeCombatLayout.Controls.Add(lblRuntimeCombatHint, 0, 1);
+        runtimeCombatLayout.Controls.Add(runtimeCombatSplit, 0, 2);
+        runtimeCombatLayout.Dock = DockStyle.Fill;
+        runtimeCombatLayout.Location = new Point(0, 0);
+        runtimeCombatLayout.Name = "runtimeCombatLayout";
+        runtimeCombatLayout.RowCount = 3;
+        runtimeCombatLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+        runtimeCombatLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+        runtimeCombatLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        runtimeCombatLayout.Size = new Size(417, 728);
+        runtimeCombatLayout.TabIndex = 0;
+        // 
+        // runtimeCombatButtons
+        // 
+        runtimeCombatButtons.Controls.Add(btnRuntimeExecuteCombatAction);
+        runtimeCombatButtons.Controls.Add(btnRuntimeEndCombatTurn);
+        runtimeCombatButtons.Dock = DockStyle.Fill;
+        runtimeCombatButtons.Location = new Point(3, 3);
+        runtimeCombatButtons.Name = "runtimeCombatButtons";
+        runtimeCombatButtons.Size = new Size(411, 28);
+        runtimeCombatButtons.TabIndex = 0;
+        // 
+        // btnRuntimeExecuteCombatAction
+        // 
+        btnRuntimeExecuteCombatAction.Enabled = false;
+        btnRuntimeExecuteCombatAction.Location = new Point(3, 3);
+        btnRuntimeExecuteCombatAction.Name = "btnRuntimeExecuteCombatAction";
+        btnRuntimeExecuteCombatAction.Size = new Size(95, 25);
+        btnRuntimeExecuteCombatAction.TabIndex = 0;
+        btnRuntimeExecuteCombatAction.Text = "Выполнить";
+        btnRuntimeExecuteCombatAction.Click += btnRuntimeExecuteCombatAction_Click;
+        // 
+        // btnRuntimeEndCombatTurn
+        // 
+        btnRuntimeEndCombatTurn.Enabled = false;
+        btnRuntimeEndCombatTurn.Location = new Point(104, 3);
+        btnRuntimeEndCombatTurn.Name = "btnRuntimeEndCombatTurn";
+        btnRuntimeEndCombatTurn.Size = new Size(90, 25);
+        btnRuntimeEndCombatTurn.TabIndex = 1;
+        btnRuntimeEndCombatTurn.Text = "Конец хода";
+        btnRuntimeEndCombatTurn.Click += btnRuntimeEndCombatTurn_Click;
+        // 
+        // lblRuntimeCombatHint
+        // 
+        lblRuntimeCombatHint.Dock = DockStyle.Fill;
+        lblRuntimeCombatHint.Location = new Point(3, 34);
+        lblRuntimeCombatHint.Name = "lblRuntimeCombatHint";
+        lblRuntimeCombatHint.Size = new Size(411, 32);
+        lblRuntimeCombatHint.TabIndex = 1;
+        lblRuntimeCombatHint.Text = "Бой не активен.";
+        lblRuntimeCombatHint.TextAlign = ContentAlignment.MiddleLeft;
+        // 
+        // runtimeCombatSplit
+        // 
+        runtimeCombatSplit.Dock = DockStyle.Fill;
+        runtimeCombatSplit.Location = new Point(3, 69);
+        runtimeCombatSplit.Name = "runtimeCombatSplit";
+        runtimeCombatSplit.Orientation = Orientation.Horizontal;
+        // 
+        // runtimeCombatSplit.Panel1
+        // 
+        runtimeCombatSplit.Panel1.Controls.Add(lvRuntimeCombatants);
+        // 
+        // runtimeCombatSplit.Panel2
+        // 
+        runtimeCombatSplit.Panel2.Controls.Add(lvRuntimeCombatActions);
+        runtimeCombatSplit.Size = new Size(411, 656);
+        runtimeCombatSplit.SplitterDistance = 318;
+        runtimeCombatSplit.TabIndex = 2;
+        // 
+        // lvRuntimeCombatants
+        // 
+        lvRuntimeCombatants.Dock = DockStyle.Fill;
+        lvRuntimeCombatants.FullRowSelect = true;
+        lvRuntimeCombatants.Location = new Point(0, 0);
+        lvRuntimeCombatants.Name = "lvRuntimeCombatants";
+        lvRuntimeCombatants.Size = new Size(411, 318);
+        lvRuntimeCombatants.TabIndex = 0;
+        lvRuntimeCombatants.UseCompatibleStateImageBehavior = false;
+        lvRuntimeCombatants.View = View.Details;
+        lvRuntimeCombatants.SelectedIndexChanged += lvRuntimeCombatSelectionChanged;
+        lvRuntimeCombatants.Columns.Add("Участник", 150);
+        lvRuntimeCombatants.Columns.Add("Команда", 75);
+        lvRuntimeCombatants.Columns.Add("HP", 60);
+        lvRuntimeCombatants.Columns.Add("Инициатива", 80);
+        lvRuntimeCombatants.Columns.Add("Статус", 160);
+        // 
+        // lvRuntimeCombatActions
+        // 
+        lvRuntimeCombatActions.Dock = DockStyle.Fill;
+        lvRuntimeCombatActions.FullRowSelect = true;
+        lvRuntimeCombatActions.Location = new Point(0, 0);
+        lvRuntimeCombatActions.Name = "lvRuntimeCombatActions";
+        lvRuntimeCombatActions.Size = new Size(411, 334);
+        lvRuntimeCombatActions.TabIndex = 0;
+        lvRuntimeCombatActions.UseCompatibleStateImageBehavior = false;
+        lvRuntimeCombatActions.View = View.Details;
+        lvRuntimeCombatActions.SelectedIndexChanged += lvRuntimeCombatSelectionChanged;
+        lvRuntimeCombatActions.Columns.Add("Действие", 160);
+        lvRuntimeCombatActions.Columns.Add("Цель", 90);
+        lvRuntimeCombatActions.Columns.Add("Описание", 220);
+        // 
         // tabRuntimeLogPage
         // 
         tabRuntimeLogPage.Controls.Add(txtRuntimeLog);
         tabRuntimeLogPage.Location = new Point(4, 24);
         tabRuntimeLogPage.Name = "tabRuntimeLogPage";
         tabRuntimeLogPage.Size = new Size(417, 728);
-        tabRuntimeLogPage.TabIndex = 4;
+        tabRuntimeLogPage.TabIndex = 5;
         tabRuntimeLogPage.Text = "Лог";
         // 
         // txtRuntimeLog
@@ -3504,6 +3646,13 @@ partial class MainForm
         tabRuntimeInventoryPage.ResumeLayout(false);
         tabRuntimeRelationshipsPage.ResumeLayout(false);
         tabRuntimeQuestsPage.ResumeLayout(false);
+        tabRuntimeCombatPage.ResumeLayout(false);
+        runtimeCombatLayout.ResumeLayout(false);
+        runtimeCombatButtons.ResumeLayout(false);
+        runtimeCombatSplit.Panel1.ResumeLayout(false);
+        runtimeCombatSplit.Panel2.ResumeLayout(false);
+        ((System.ComponentModel.ISupportInitialize)runtimeCombatSplit).EndInit();
+        runtimeCombatSplit.ResumeLayout(false);
         tabRuntimeLogPage.ResumeLayout(false);
         tabRuntimeLogPage.PerformLayout();
         tabSaves.ResumeLayout(false);

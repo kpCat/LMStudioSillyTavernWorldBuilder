@@ -288,6 +288,7 @@ public sealed class GameChoice
     public string Id { get; set; } = string.Empty;
     public string Text { get; set; } = string.Empty;
     public string? NextSceneId { get; set; }
+    public string EncounterId { get; set; } = string.Empty;
     public List<GameCondition> Conditions { get; set; } = new();
     public List<GameEffect> Effects { get; set; } = new();
 }

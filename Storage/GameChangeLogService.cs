@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 
@@ -8,7 +9,8 @@ internal sealed class GameChangeLogService
 {
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public async Task AppendChangeAsync(GameProjectData project, GameChangeRecord record, CancellationToken cancellationToken = default)

@@ -103,6 +103,29 @@ public sealed class GameMvpOrchestratorTests
     }
 
     [Fact]
+    public void CombatChoicePointingToStartScene_AddsBlockingIssue()
+    {
+        var project = CreateContentRichCombatProject();
+        project.Scenes[0].Choices.Add(new GameChoice { Id = "choice_attack", Text = "Приготовиться к бою", NextSceneId = "scene_start" });
+
+        var report = new GameMvpOrchestratorService().BuildReadinessReport(project);
+
+        Assert.Contains(report.Issues, x => x.Code == "combat_choice_points_to_start_scene" && x.Severity == GameMvpReadinessSeverity.Error);
+        Assert.True(report.HasBlockingProblems);
+    }
+
+    [Fact]
+    public void CombatEncounterReachableThroughChoiceEncounterId_HasNoUnreachableCombatIssue()
+    {
+        var project = CreateContentRichCombatProject();
+        project.Scenes[0].Choices.Add(new GameChoice { Id = "choice_attack", Text = "Приготовиться к бою", EncounterId = "bandit_fight" });
+
+        var report = new GameMvpOrchestratorService().BuildReadinessReport(project);
+
+        Assert.DoesNotContain(report.Issues, x => x.Code == "combat_encounter_unreachable");
+    }
+
+    [Fact]
     public void FormatReportForUi_ContainsRussianStageAndRecommendationText()
     {
         var project = CreateCoreProjectWithoutEnoughScenes();

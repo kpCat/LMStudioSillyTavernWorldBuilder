@@ -55,7 +55,7 @@ internal partial class PlayForm : Form
         SelectTab(tabMap);
     }
 
-    private void btnEndTurn_Click(object? sender, EventArgs e)
+    private async void btnEndTurn_Click(object? sender, EventArgs e)
     {
         var result = _runtimeEngine.EndTurnWithResult(_project, _save);
         AddLog("Ход завершён. Новый ход: " + result.NewTurnNumber);
@@ -63,6 +63,7 @@ internal partial class PlayForm : Form
         {
             AddLog(line);
         }
+        await SaveAutosaveProgressAsync();
         RefreshPlayView();
     }
     private void btnClosePlay_Click(object? sender, EventArgs e)
@@ -106,11 +107,11 @@ internal partial class PlayForm : Form
     {
         FillList(lvStats, BuildCharacterRows());
         FillList(lvCurrencies, _save.Currencies.Select(x => (x.Key, FindCurrencyName(x.Key), x.Value.ToString())));
-        FillList(lvInventory, _runtimeEngine.GetInventory(_project, _save).Select(x => (x.InstanceId, FindItemName(x.ItemId), x.IsEquipped ? "надето" : x.Quantity.ToString())));
+        FillList(lvInventory, _runtimeEngine.GetInventory(_project, _save).Select(x => (x.InstanceId, FindItemName(x.ItemId), x.IsEquipped ? "надето" : x.Quantity.ToString())), ("empty", "Инвентарь пуст", "Нет предметов"));
         FillList(lvEquipment, _save.EquippedItems.Select(x => (x.Key, FindSlotName(x.Key), x.Value)));
         FillList(lvSkills, _save.KnownSkills.Select(x => (x.SkillId, FindSkillName(x.SkillId), BuildSkillStateText(x))));
-        FillList(lvRelationships, _save.Relationships.Select(x => (x.Key, FindRelationshipName(x.Key), x.Value.ToString())));
-        FillList(lvQuests, _save.ActiveQuestIds.Select(x => (x, FindQuestName(x), "активен")));
+        FillList(lvRelationships, _save.Relationships.Select(x => (x.Key, FindRelationshipName(x.Key), x.Value.ToString())), ("empty", "Нет отношений", "Нет данных"));
+        FillList(lvQuests, _save.ActiveQuestIds.Select(x => (x, FindQuestName(x), "активен")), ("empty", "Активных заданий нет", "Нет данных"));
         FillList(lvMap, _runtimeEngine.GetAvailableLocations(_project, _save).Select(x => (x.Id, x.Name, x.Description)));
         FillActions();
         RefreshCombatTab();
@@ -137,14 +138,15 @@ internal partial class PlayForm : Form
         SetTabVisible(tabProgression, _project.ProgressionNodes.Count > 0 || _project.Mechanics.EnableProgression);
     }
 
-    private void Choice_Click(object? sender, EventArgs e)
+    private async void Choice_Click(object? sender, EventArgs e)
     {
         if (sender is Button { Tag: string choiceId })
         {
             var result = _runtimeEngine.ApplyChoiceWithResult(_project, _save, choiceId);
-            if (!result.Success)
+            AddOperationLog(result);
+            if (result.Success)
             {
-                AddLog(result.Message);
+                await SaveAutosaveProgressAsync();
             }
             RefreshPlayView();
         }
@@ -351,7 +353,7 @@ internal partial class PlayForm : Form
         btnExecuteAction.Enabled = IsSelectedActionAvailable();
     }
 
-    private void ExecuteSelectedAction()
+    private async void ExecuteSelectedAction()
     {
         if (lvActions.SelectedItems.Count == 0)
         {
@@ -363,17 +365,25 @@ internal partial class PlayForm : Form
         {
             AddLog(result.Message);
         }
+        else
+        {
+            await SaveAutosaveProgressAsync();
+        }
         RefreshPlayView();
     }
 
-    private void btnStartCombat_Click(object? sender, EventArgs e)
+    private async void btnStartCombat_Click(object? sender, EventArgs e)
     {
         var result = _runtimeEngine.StartCurrentSceneCombatWithResult(_project, _save);
         AddOperationLog(result);
+        if (result.Success)
+        {
+            await SaveAutosaveProgressAsync();
+        }
         RefreshPlayView();
     }
 
-    private void btnExecuteCombatAction_Click(object? sender, EventArgs e)
+    private async void btnExecuteCombatAction_Click(object? sender, EventArgs e)
     {
         if (lvCombatActions.SelectedItems.Count == 0 || lvCombatants.SelectedItems.Count == 0)
         {
@@ -384,13 +394,21 @@ internal partial class PlayForm : Form
         var targetRuntimeId = lvCombatants.SelectedItems[0].Tag as string ?? lvCombatants.SelectedItems[0].Text;
         var result = _runtimeEngine.ExecuteCombatActionWithResult(_project, _save, actionId, targetRuntimeId);
         AddOperationLog(result);
+        if (result.Success)
+        {
+            await SaveAutosaveProgressAsync();
+        }
         RefreshPlayView();
     }
 
-    private void btnEndCombatTurn_Click(object? sender, EventArgs e)
+    private async void btnEndCombatTurn_Click(object? sender, EventArgs e)
     {
         var result = _runtimeEngine.EndCombatTurnWithResult(_project, _save);
         AddOperationLog(result);
+        if (result.Success)
+        {
+            await SaveAutosaveProgressAsync();
+        }
         RefreshPlayView();
     }
 
@@ -531,6 +549,18 @@ internal partial class PlayForm : Form
         if (!result.Success && !string.IsNullOrWhiteSpace(result.Message) && !result.LogLines.Contains(result.Message))
         {
             AddLog(result.Message);
+        }
+    }
+
+    private async Task SaveAutosaveProgressAsync()
+    {
+        try
+        {
+            await _storageService.SaveProgressAsync(_project, _save, "autosave.json");
+        }
+        catch (Exception ex)
+        {
+            AddLog("Autosave failed: " + ex.Message);
         }
     }
 
@@ -714,16 +744,9 @@ internal partial class PlayForm : Form
         }
     }
 
-    private static void FillList(ListView listView, IEnumerable<(string Id, string Name, string Description)> rows)
+    private static void FillList(ListView listView, IEnumerable<(string Id, string Name, string Description)> rows, (string Id, string Name, string Description)? emptyRow = null)
     {
-        listView.Items.Clear();
-        foreach (var row in rows)
-        {
-            var item = new ListViewItem(row.Id);
-            item.SubItems.Add(row.Name);
-            item.SubItems.Add(row.Description);
-            listView.Items.Add(item);
-        }
+        PlayListViewHelper.FillList(listView, rows, emptyRow);
     }
 
     private string FindStatName(string id) => _project.Stats.FirstOrDefault(x => x.Id == id)?.Name ?? id;

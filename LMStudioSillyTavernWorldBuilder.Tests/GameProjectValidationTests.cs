@@ -43,6 +43,48 @@ public sealed class GameProjectValidationTests
     }
 
     [Fact]
+    public void Repair_CombatChoicePointingToStartScene_GetsEncounterId()
+    {
+        var project = CreateCombatChoiceProject();
+
+        new GameProjectRepairService().ApplySafeRepairs(project, _ => { });
+
+        var choice = project.Scenes.Single(x => x.Id == "scene_edge_encounter").Choices.Single(x => x.Id == "choice_attack_wolves");
+        Assert.Equal("encounter_glitch_entity_fight", choice.EncounterId);
+        Assert.True(string.IsNullOrWhiteSpace(choice.NextSceneId));
+    }
+
+    [Fact]
+    public void Repair_DecimalFormulas_NormalizesIntegerSafeRuntimeExpressions()
+    {
+        var project = TestProjects.CreatePlayableProject();
+        project.Stats.Add(new GameStatDefinition { Id = "stamina", Name = "Stamina" });
+        project.Variables.Add(new GameVariableDefinition { Id = "metamodule_sync", Name = "Sync" });
+        project.Formulas.Add(new GameFormulaDefinition { Id = "formula_combat_damage_base", Expression = "stat.stamina * 1.5" });
+        project.Formulas.Add(new GameFormulaDefinition { Id = "formula_metamodule_sync_gain", Expression = "variable.metamodule_sync * 0.1" });
+        project.Combat = new GameCombatDefinition { Enabled = true, DefaultHitChanceFormulaExpression = "clamp(0.7 + stat.will * 0.5, 0.1, 0.95)" };
+        project.Actions.Add(new GameActionDefinition { Id = "combat_strike", HitChanceFormulaExpression = "stat.will * 0.5" });
+
+        new GameProjectRepairService().ApplySafeRepairs(project, _ => { });
+
+        Assert.Equal("stat.stamina * 3 / 2", project.Formulas.Single(x => x.Id == "formula_combat_damage_base").Expression);
+        Assert.Equal("variable.metamodule_sync / 10", project.Formulas.Single(x => x.Id == "formula_metamodule_sync_gain").Expression);
+        Assert.DoesNotContain("0.", project.Combat.DefaultHitChanceFormulaExpression);
+        Assert.Equal("stat.will / 2", project.Actions.Single(x => x.Id == "combat_strike").HitChanceFormulaExpression);
+    }
+
+    [Fact]
+    public void Validator_CombatChoicePointingToStartAndUnreachableEncounter_AddsWarnings()
+    {
+        var project = CreateCombatChoiceProject();
+
+        var result = new GameProjectValidator().Validate(project);
+
+        Assert.Contains(result.Warnings, x => x.Contains("combat_choice_points_to_start_scene", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Warnings, x => x.Contains("combat_encounter_unreachable", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ApplyGeneratedProjectJson_DoesNotLoseProjectPath()
     {
         var current = TestProjects.CreatePlayableProject();
@@ -771,6 +813,56 @@ public sealed class GameProjectValidationTests
         var result = new GameProjectValidator().Validate(project);
 
         Assert.DoesNotContain(result.Warnings, x => x.Contains("Unknown or unresolved effect 'combatDamage", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static GameProjectData CreateCombatChoiceProject()
+    {
+        var project = TestProjects.CreatePlayableProject();
+        project.Stats.Add(new GameStatDefinition { Id = "health", Name = "Health", InitialValue = 20 });
+        project.Combat = new GameCombatDefinition { Enabled = true, PlayerHealthStatId = "health" };
+        project.Scenes.Clear();
+        project.Scenes.Add(new GameScene
+        {
+            Id = "scene_edge_encounter",
+            Title = "Edge",
+            Text = "Wolves gather.",
+            Choices =
+            {
+                new GameChoice
+                {
+                    Id = "choice_attack_wolves",
+                    Text = "Приготовиться к бою",
+                    NextSceneId = "scene_start"
+                }
+            }
+        });
+        project.Scenes.Add(new GameScene { Id = "scene_start", Title = "Start", Text = "Bridge" });
+        project.Scenes.Add(new GameScene { Id = "scene_glitch_success", Title = "Win", Text = "Win" });
+        project.Scenes.Add(new GameScene { Id = "scene_checkpoint_tension", Title = "Lose", Text = "Lose" });
+        project.Meta.StartSceneId = "scene_edge_encounter";
+        project.Actions.Add(new GameActionDefinition
+        {
+            Id = "combat_strike",
+            Name = "Strike",
+            AvailableInCombat = true,
+            ActorTeam = "player",
+            TargetScope = "enemy",
+            Effects = { new GameEffect { Type = "combatDamage", Amount = 5 } }
+        });
+        project.Encounters.Add(new GameEncounterDefinition
+        {
+            Id = "encounter_glitch_entity_fight",
+            Kind = "combat",
+            SceneId = "scene_edge_encounter",
+            VictorySceneId = "scene_glitch_success",
+            DefeatSceneId = "scene_checkpoint_tension",
+            Combatants =
+            {
+                new GameEncounterCombatantDefinition { Id = "player", Name = "Player", Team = "player", IsPlayer = true, Stats = { ["health"] = 20 }, ActionIds = { "combat_strike" } },
+                new GameEncounterCombatantDefinition { Id = "enemy", Name = "Enemy", Team = "enemy", Stats = { ["health"] = 10 } }
+            }
+        });
+        return project;
     }
 
     private static async Task<GameDraftSession> ReadLatestDraftManifestAsync(GameProjectData project)

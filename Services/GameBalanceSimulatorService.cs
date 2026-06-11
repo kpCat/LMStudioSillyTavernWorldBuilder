@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Runtime;
@@ -16,11 +15,7 @@ internal sealed class GameBalanceSimulatorService
     private readonly GameRuntimeEngine _runtimeEngine = new();
     private readonly GameStorageService _storageService = new();
     private readonly GameProjectCloneService _cloneService = new();
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    private readonly JsonSerializerOptions _jsonOptions = GenerationJsonOptions.PromptJson;
 
     public GameBalanceReport BuildReport(GameProjectData project, int simulationRunsPerEncounter)
     {

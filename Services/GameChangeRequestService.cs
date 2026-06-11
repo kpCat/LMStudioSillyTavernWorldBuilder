@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Storage;
@@ -11,11 +10,7 @@ internal sealed class GameChangeRequestService
     private readonly GameDesignInterviewService _designInterviewService = new();
     private readonly GameRandomDirectorService _randomDirectorService = new();
     private readonly GameBalanceSimulatorService _balanceSimulatorService = new();
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    private readonly JsonSerializerOptions _jsonOptions = GenerationJsonOptions.PromptJson;
 
     public GameChangeRequestImpactReport AnalyzeRequest(GameProjectData project, string userRequest)
     {

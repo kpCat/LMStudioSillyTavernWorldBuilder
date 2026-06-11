@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Providers;
 using LMStudioSillyTavernWorldBuilder.Storage;
@@ -170,7 +171,7 @@ internal sealed class GameCreationPipelineService
         var text = await SendPresetAsync(project, settings, Prompts.GameRevision, new[]
         {
             new ChatMessage { Role = "system", Content = Prompts.GameRevision.SystemPrompt },
-            new ChatMessage { Role = "user", Content = JsonSerializer.Serialize(new { RevisionRequest = revisionRequest, ProjectContext = JsonSerializer.Deserialize<object>(context) }, _jsonOptions) }
+            new ChatMessage { Role = "user", Content = JsonSerializer.Serialize(new { RevisionRequest = revisionRequest, ProjectContext = JsonSerializer.Deserialize<object>(context) }, GenerationJsonOptions.PromptJson) }
         }, log, "revision-fix", cancellationToken);
 
         var draft = await CreateGeneratedProjectDraftAsync(project, "revision-fix", text, log, cancellationToken);
@@ -675,6 +676,11 @@ internal sealed class GameCreationPipelineService
         return BuildCompactProjectContext(project, stage);
     }
 
+    internal bool IsGeneratedDraftNoOpForStageForTests(GameProjectData beforeProject, GameProjectData afterProject, string stage)
+    {
+        return BuildDraftStageImpactSummary(beforeProject, afterProject, stage).IsRequestedStageNoOp;
+    }
+
     private object BuildCompactProjectContextModel(GameProjectData project, string stage, int itemLimit)
     {
         var wasTrimmed = itemLimit < 100;
@@ -995,6 +1001,94 @@ internal sealed class GameCreationPipelineService
         return message;
     }
 
+    private DraftStageImpactSummary BuildDraftStageImpactSummary(GameProjectData beforeProject, GameProjectData afterProject, string stage)
+    {
+        var before = _mvpOrchestratorService.BuildReadinessReport(beforeProject);
+        var after = _mvpOrchestratorService.BuildReadinessReport(afterProject);
+        var normalizedStage = NormalizeMvpStageId(stage);
+        var beforeStage = before.Stages.FirstOrDefault(x => string.Equals(x.Stage, normalizedStage, StringComparison.OrdinalIgnoreCase));
+        var afterStage = after.Stages.FirstOrDefault(x => string.Equals(x.Stage, normalizedStage, StringComparison.OrdinalIgnoreCase));
+        var lines = new List<string>
+        {
+            "Draft stage: " + normalizedStage,
+            "Will add/update:",
+            "- stats/resources: +" + Math.Max(0, CountStatsResources(afterProject) - CountStatsResources(beforeProject)),
+            "- actions: +" + Math.Max(0, afterProject.Actions.Count - beforeProject.Actions.Count),
+            "- ambientEvents/randomEvents: +" + Math.Max(0, afterProject.WorldState.AmbientEvents.Count - beforeProject.WorldState.AmbientEvents.Count),
+            "- progressionNodes: +" + Math.Max(0, afterProject.ProgressionNodes.Count - beforeProject.ProgressionNodes.Count),
+            "- worldState changed: " + (!SerializeComparable(beforeProject.WorldState).Equals(SerializeComparable(afterProject.WorldState), StringComparison.Ordinal) ? "yes" : "no"),
+            "Predicted MVP impact:"
+        };
+
+        if (beforeStage != null && afterStage != null)
+        {
+            lines.Add("- " + normalizedStage + ": " + beforeStage.ExistingCount + "/" + beforeStage.TargetMinimum
+                + " -> " + afterStage.ExistingCount + "/" + afterStage.TargetMinimum
+                + ", " + (afterStage.IsSatisfied ? "satisfied" : "not satisfied"));
+        }
+        else
+        {
+            lines.Add("- " + normalizedStage + ": not tracked by current MVP Orchestrator report");
+        }
+
+        var improved = beforeStage != null
+            && afterStage != null
+            && (afterStage.ExistingCount > beforeStage.ExistingCount || afterStage.IsSatisfied && !beforeStage.IsSatisfied);
+        var requiredNoOp = IsMandatoryGeneratedMvpStage(normalizedStage)
+            && beforeStage != null
+            && afterStage != null
+            && !beforeStage.IsSatisfied
+            && !improved;
+
+        return new DraftStageImpactSummary(normalizedStage, requiredNoOp, lines);
+    }
+
+    private static string NormalizeMvpStageId(string stage)
+    {
+        return stage switch
+        {
+            "stats-resources" => "stats_resources",
+            "gameplay-actions" => "actions",
+            "world-state" => "world_state",
+            "random-director" or "random-events" or "ambient-events" => "random_events",
+            _ => stage.Replace('-', '_')
+        };
+    }
+
+    private static bool IsMandatoryGeneratedMvpStage(string stage)
+    {
+        return stage is "combat"
+            or "random_events"
+            or "progression"
+            or "items"
+            or "equipment"
+            or "skills"
+            or "spells"
+            or "encounters"
+            or "locations"
+            or "scenes"
+            or "actions"
+            or "world_state"
+            or "stats_resources"
+            or "formulas";
+    }
+
+    private static bool IsRandomEventsStage(string stage)
+    {
+        var normalized = NormalizeMvpStageId(stage);
+        return normalized is "random_events" or "world_state";
+    }
+
+    private static int CountStatsResources(GameProjectData project)
+    {
+        return project.Stats.Count + project.Currencies.Count + project.Variables.Count;
+    }
+
+    private static string SerializeComparable<T>(T value)
+    {
+        return JsonSerializer.Serialize(value, GenerationJsonOptions.PromptJson);
+    }
+
     private static string Preview(string text, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -1005,6 +1099,8 @@ internal sealed class GameCreationPipelineService
         var trimmed = text.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength] + "...";
     }
+
+    private sealed record DraftStageImpactSummary(string Stage, bool IsRequestedStageNoOp, IReadOnlyList<string> LogLines);
 
     internal void ApplyGeneratedProjectJson(GameProjectData project, string text, Action<string> log)
     {
@@ -1020,7 +1116,7 @@ internal sealed class GameCreationPipelineService
     {
         var json = ExtractJson(text);
         var normalizationWarnings = new List<string>();
-        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log, project.Actions.Select(x => x.Id));
+        json = NormalizeGeneratedProjectJson(json, "initial-content", null, project, normalizationWarnings, log);
         try
         {
             var generated = JsonSerializer.Deserialize<GameProjectData>(json, _jsonOptions);
@@ -1031,7 +1127,7 @@ internal sealed class GameCreationPipelineService
             }
 
             _repairService.PreserveIdentity(project, generated, log);
-            _repairService.ApplySafeRepairs(generated, log);
+            _repairService.ApplySafeRepairs(generated, log, GameProjectRepairMode.FullProject);
             GameDraftSession? draft = null;
             if (cancellationToken.HasValue && !string.IsNullOrWhiteSpace(project.Summary.ProjectPath))
             {
@@ -1106,7 +1202,7 @@ internal sealed class GameCreationPipelineService
 
         var json = ExtractJson(rawText);
         var normalizationWarnings = new List<string>();
-        json = NormalizeGeneratedProjectJsonAmounts(json, normalizationWarnings, log, project.Actions.Select(x => x.Id));
+        json = NormalizeGeneratedProjectJson(json, stage, null, project, normalizationWarnings, log);
         try
         {
             var generated = JsonSerializer.Deserialize<GameProjectData>(json, _jsonOptions);
@@ -1126,7 +1222,7 @@ internal sealed class GameCreationPipelineService
             }
 
             _repairService.PreserveIdentity(project, generated, log);
-            _repairService.ApplySafeRepairs(generated, log);
+            _repairService.ApplySafeRepairs(generated, log, GameProjectRepairMode.GeneratedPartialDraft);
             var draft = await _draftService.ExtractGeneratedProjectAsync(project, stage, generated, rawText, cancellationToken);
 
             var candidate = _cloneService.Clone(project);
@@ -1135,6 +1231,15 @@ internal sealed class GameCreationPipelineService
             foreach (var warning in normalizationWarnings)
             {
                 validation.Warnings.Add(warning);
+            }
+            var impactSummary = BuildDraftStageImpactSummary(project, candidate, stage);
+            foreach (var line in impactSummary.LogLines)
+            {
+                log(line);
+            }
+            if (validation.IsValid && impactSummary.IsRequestedStageNoOp)
+            {
+                validation.Errors.Add("generated draft does not improve requested MVP stage '" + impactSummary.Stage + "'.");
             }
             draft.Validation = validation;
             foreach (var warning in validation.Warnings)
@@ -1185,12 +1290,23 @@ internal sealed class GameCreationPipelineService
         }
     }
 
-    internal static string NormalizeGeneratedProjectJsonAmountsForTests(string json, List<string> warnings)
+    internal static string NormalizeGeneratedProjectJsonForTests(string json, string stage, List<string> warnings)
     {
-        return NormalizeGeneratedProjectJsonAmounts(json, warnings, null, []);
+        return NormalizeGeneratedProjectJson(json, stage, null, null, warnings, null);
     }
 
-    private static string NormalizeGeneratedProjectJsonAmounts(string json, List<string> warnings, Action<string>? log, IEnumerable<string> existingActionIds)
+    internal static string NormalizeGeneratedProjectJsonAmountsForTests(string json, List<string> warnings)
+    {
+        return NormalizeGeneratedProjectJsonForTests(json, string.Empty, warnings);
+    }
+
+    private static string NormalizeGeneratedProjectJson(
+        string json,
+        string stage,
+        string? category,
+        GameProjectData? currentProject,
+        List<string> warnings,
+        Action<string>? log)
     {
         JsonNode? root;
         try
@@ -1207,14 +1323,19 @@ internal sealed class GameCreationPipelineService
             return json;
         }
 
+        var existingActionIds = currentProject?.Actions.Select(x => x.Id) ?? [];
         NormalizeGeneratedActionAmounts(rootObject, warnings, log);
+        NormalizeGeneratedGlobalEffects(rootObject, currentProject, warnings, log);
+        NormalizeGeneratedFormulaExpressions(rootObject, warnings, log);
         NormalizeGeneratedSkillsAndSpells(rootObject, warnings, log);
         NormalizeGeneratedStatusEffects(rootObject, warnings, log);
+        NormalizeGeneratedRandomEvents(rootObject, stage, category, warnings, log);
         NormalizeGeneratedWorldState(rootObject, warnings, log);
         NormalizeGeneratedScenes(rootObject, warnings, log);
         NormalizeGeneratedCombat(rootObject, warnings, log, existingActionIds);
+        NormalizeGeneratedSceneEncounterChoices(rootObject, warnings, log);
 
-        return root.ToJsonString();
+        return root.ToJsonString(GenerationJsonOptions.PromptJson);
     }
 
     private static void NormalizeGeneratedCombat(JsonObject root, List<string> warnings, Action<string>? log, IEnumerable<string> existingActionIds)
@@ -1245,6 +1366,145 @@ internal sealed class GameCreationPipelineService
 
         var knownStats = GetDeclaredStatIds(root);
         NormalizeCombatFormulaStrings(root, knownStats, warnings, log);
+    }
+
+    private static void NormalizeGeneratedGlobalEffects(JsonObject root, GameProjectData? currentProject, List<string> warnings, Action<string>? log)
+    {
+        var currencyIds = new HashSet<string>(currentProject?.Currencies.Select(x => x.Id) ?? [], StringComparer.OrdinalIgnoreCase);
+        if (root["currencies"] is JsonArray generatedCurrencies)
+        {
+            foreach (var currency in generatedCurrencies.OfType<JsonObject>())
+            {
+                var id = GetJsonString(currency, "id");
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    currencyIds.Add(id);
+                }
+            }
+        }
+
+        var formulaIds = new HashSet<string>(currentProject?.Formulas.Select(x => x.Id) ?? [], StringComparer.OrdinalIgnoreCase);
+        if (root["formulas"] is JsonArray generatedFormulas)
+        {
+            foreach (var formula in generatedFormulas.OfType<JsonObject>())
+            {
+                var id = GetJsonString(formula, "id");
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    formulaIds.Add(id);
+                }
+            }
+        }
+
+        var declaredStats = GetDeclaredStatIds(root);
+        foreach (var statId in currentProject?.Stats.Select(x => x.Id) ?? [])
+        {
+            declaredStats.Add(statId);
+        }
+
+        NormalizeGeneratedGlobalEffectNode(root, currencyIds, formulaIds, declaredStats, "$", warnings, log);
+    }
+
+    private static void NormalizeGeneratedFormulaExpressions(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["formulas"] is not JsonArray formulas)
+        {
+            return;
+        }
+
+        for (var formulaIndex = 0; formulaIndex < formulas.Count; formulaIndex++)
+        {
+            if (formulas[formulaIndex] is not JsonObject formula)
+            {
+                continue;
+            }
+
+            var expression = GetJsonString(formula, "expression");
+            var normalized = NormalizeIntegerSafeFormula(expression);
+            if (!string.Equals(expression, normalized, StringComparison.Ordinal))
+            {
+                formula["expression"] = normalized;
+                AddNormalizationWarning(warnings, log, $"$.formulas[{formulaIndex}].expression: decimal formula normalized for integer runtime evaluator.");
+            }
+        }
+    }
+
+    private static void NormalizeGeneratedGlobalEffectNode(
+        JsonNode? node,
+        HashSet<string> currencyIds,
+        HashSet<string> formulaIds,
+        HashSet<string> declaredStats,
+        string path,
+        List<string> warnings,
+        Action<string>? log)
+    {
+        if (node is JsonObject obj)
+        {
+            NormalizeGeneratedGlobalEffectObject(obj, currencyIds, formulaIds, declaredStats, path, warnings, log);
+            foreach (var property in obj.ToList())
+            {
+                NormalizeGeneratedGlobalEffectNode(property.Value, currencyIds, formulaIds, declaredStats, path + "." + property.Key, warnings, log);
+            }
+            return;
+        }
+
+        if (node is JsonArray array)
+        {
+            for (var i = 0; i < array.Count; i++)
+            {
+                NormalizeGeneratedGlobalEffectNode(array[i], currencyIds, formulaIds, declaredStats, path + "[" + i + "]", warnings, log);
+            }
+        }
+    }
+
+    private static void NormalizeGeneratedGlobalEffectObject(
+        JsonObject obj,
+        HashSet<string> currencyIds,
+        HashSet<string> formulaIds,
+        HashSet<string> declaredStats,
+        string path,
+        List<string> warnings,
+        Action<string>? log)
+    {
+        var type = GetJsonString(obj, "type");
+        if (string.Equals(type, "status", StringComparison.OrdinalIgnoreCase))
+        {
+            obj["type"] = "statusEffect";
+            AddNormalizationWarning(warnings, log, $"{path}.type: status normalized to statusEffect.");
+        }
+        else if (string.Equals(type, "item", StringComparison.OrdinalIgnoreCase)
+            && currencyIds.Contains(GetJsonString(obj, "targetId")))
+        {
+            obj["type"] = "currency";
+            AddNormalizationWarning(warnings, log, $"{path}.type: item effect target matched currency and was normalized to currency.");
+        }
+
+        var formulaExpression = GetJsonString(obj, "formulaExpression");
+        if (string.IsNullOrWhiteSpace(GetJsonString(obj, "formulaId"))
+            && !string.IsNullOrWhiteSpace(formulaExpression)
+            && formulaIds.Contains(formulaExpression))
+        {
+            obj["formulaId"] = formulaExpression;
+            obj["formulaExpression"] = string.Empty;
+            AddNormalizationWarning(warnings, log, $"{path}.formulaExpression: formula id moved to formulaId.");
+        }
+
+        foreach (var property in obj.ToList())
+        {
+            if (property.Value is not JsonValue value
+                || !value.TryGetValue<string>(out var text)
+                || !IsCombatFormulaProperty(property.Key, text))
+            {
+                continue;
+            }
+
+            var normalized = NormalizeUnknownCombatStats(text, declaredStats);
+            if (!string.Equals(text, normalized, StringComparison.Ordinal))
+            {
+                obj[property.Key] = normalized;
+                AddNormalizationWarning(warnings, log, $"{path}.{property.Key}: unknown agility/strength stats normalized.");
+            }
+        }
     }
 
     private static int MoveLegacyCombatActions(JsonObject root, List<string> warnings, Action<string>? log)
@@ -1612,11 +1872,11 @@ internal sealed class GameCreationPipelineService
 
                 if (property.Value is JsonValue value && value.TryGetValue<string>(out var text) && IsCombatFormulaProperty(property.Key, text))
                 {
-                    var normalized = NormalizeUnknownCombatStats(text, declaredStats);
+                    var normalized = NormalizeIntegerSafeFormula(NormalizeUnknownCombatStats(text, declaredStats));
                     if (!string.Equals(text, normalized, StringComparison.Ordinal))
                     {
                         jsonObject[property.Key] = normalized;
-                        AddNormalizationWarning(warnings, log, $"Combat formula property '{property.Key}': unknown agility/strength stats normalized.");
+                        AddNormalizationWarning(warnings, log, $"Combat formula property '{property.Key}': formula normalized for runtime evaluator.");
                     }
                 }
                 else
@@ -1739,7 +1999,8 @@ internal sealed class GameCreationPipelineService
                 continue;
             }
 
-            NormalizeSceneText(scene, sceneIndex, warnings, log);
+                NormalizeSceneText(scene, sceneIndex, warnings, log);
+                NormalizeSceneTitle(scene, sceneIndex, warnings, log);
             if (scene["choices"] is JsonArray choices)
             {
                 NormalizeSceneChoices(choices, generatedSceneIds, syntheticScenes, warnings, log);
@@ -1761,6 +2022,43 @@ internal sealed class GameCreationPipelineService
 
         scene["text"] = description;
         AddNormalizationWarning(warnings, log, $"$.scenes[{sceneIndex}].description: copied to text.");
+    }
+
+    private static void NormalizeSceneTitle(JsonObject scene, int sceneIndex, List<string> warnings, Action<string>? log)
+    {
+        if (!string.IsNullOrWhiteSpace(GetJsonString(scene, "title")))
+        {
+            return;
+        }
+
+        var title = GetJsonString(scene, "name");
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            title = BuildSceneTitleFromText(GetJsonString(scene, "text"));
+        }
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            title = GetJsonString(scene, "id");
+        }
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return;
+        }
+
+        scene["title"] = title;
+        AddNormalizationWarning(warnings, log, $"$.scenes[{sceneIndex}].title: filled from generated scene content.");
+    }
+
+    private static string BuildSceneTitleFromText(string text)
+    {
+        var trimmed = text.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return string.Empty;
+        }
+
+        return trimmed.Length <= 56 ? trimmed : trimmed[..56].Trim() + "...";
     }
 
     private static void NormalizeSceneChoices(JsonArray choices, HashSet<string> generatedSceneIds, Dictionary<string, JsonObject> syntheticScenes, List<string> warnings, Action<string>? log)
@@ -1886,6 +2184,119 @@ internal sealed class GameCreationPipelineService
         };
         generatedSceneIds.Add(nextSceneId);
         AddNormalizationWarning(warnings, log, $"$.scenes choices nextSceneId '{nextSceneId}': generated fallback scene for location-like target.");
+    }
+
+    private static void NormalizeGeneratedSceneEncounterChoices(JsonObject root, List<string> warnings, Action<string>? log)
+    {
+        if (root["scenes"] is not JsonArray scenes || root["encounters"] is not JsonArray encounters)
+        {
+            return;
+        }
+
+        var encounterIds = encounters
+            .OfType<JsonObject>()
+            .Select(x => GetJsonString(x, "id"))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (encounterIds.Count == 0)
+        {
+            return;
+        }
+
+        for (var sceneIndex = 0; sceneIndex < scenes.Count; sceneIndex++)
+        {
+            if (scenes[sceneIndex] is not JsonObject scene || scene["choices"] is not JsonArray choices)
+            {
+                continue;
+            }
+
+            var sceneId = GetJsonString(scene, "id");
+            for (var choiceIndex = 0; choiceIndex < choices.Count; choiceIndex++)
+            {
+                if (choices[choiceIndex] is not JsonObject choice || !string.IsNullOrWhiteSpace(GetJsonString(choice, "encounterId")))
+                {
+                    continue;
+                }
+
+                var nextSceneId = GetJsonString(choice, "nextSceneId").Trim();
+                if (!string.IsNullOrWhiteSpace(nextSceneId) && encounterIds.Contains(nextSceneId))
+                {
+                    choice["encounterId"] = nextSceneId;
+                    choice["nextSceneId"] = string.Empty;
+                    AddNormalizationWarning(warnings, log, $"$.scenes[{sceneIndex}].choices[{choiceIndex}].nextSceneId: encounter id moved to encounterId.");
+                    continue;
+                }
+
+                if (!IsCombatChoice(choice) || !string.Equals(nextSceneId, "scene_start", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var encounterId = SelectCombatEncounterIdForScene(encounters, sceneId);
+                if (string.IsNullOrWhiteSpace(encounterId))
+                {
+                    AddNormalizationWarning(warnings, log, $"$.scenes[{sceneIndex}].choices[{choiceIndex}]: combat-like choice points to scene_start but no combat encounter was selected.");
+                    continue;
+                }
+
+                choice["encounterId"] = encounterId;
+                choice["nextSceneId"] = string.Empty;
+                AddNormalizationWarning(warnings, log, $"$.scenes[{sceneIndex}].choices[{choiceIndex}]: combat-like choice linked to encounterId '{encounterId}'.");
+            }
+        }
+    }
+
+    private static string SelectCombatEncounterIdForScene(JsonArray encounters, string sceneId)
+    {
+        var combatEncounters = encounters
+            .OfType<JsonObject>()
+            .Where(IsCombatEncounter)
+            .ToList();
+        var sceneEncounter = combatEncounters.FirstOrDefault(x => string.Equals(GetJsonString(x, "sceneId"), sceneId, StringComparison.OrdinalIgnoreCase));
+        if (sceneEncounter != null)
+        {
+            return GetJsonString(sceneEncounter, "id");
+        }
+
+        var firstWithCombatants = combatEncounters.FirstOrDefault(x => x["combatants"] is JsonArray { Count: > 0 });
+        return firstWithCombatants == null ? string.Empty : GetJsonString(firstWithCombatants, "id");
+    }
+
+    private static bool IsCombatEncounter(JsonObject encounter)
+    {
+        return string.Equals(GetJsonString(encounter, "kind"), "combat", StringComparison.OrdinalIgnoreCase)
+            || encounter["combatants"] is JsonArray { Count: > 0 };
+    }
+
+    private static bool IsCombatChoice(JsonObject choice)
+    {
+        var text = string.Join(" ", GetJsonString(choice, "id"), GetJsonString(choice, "text")).ToLowerInvariant();
+        return text.Contains("бой", StringComparison.Ordinal)
+            || text.Contains("схват", StringComparison.Ordinal)
+            || text.Contains("attack", StringComparison.Ordinal)
+            || text.Contains("fight", StringComparison.Ordinal)
+            || text.Contains("combat", StringComparison.Ordinal)
+            || text.Contains("приготовиться к бою", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeIntegerSafeFormula(string expression)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            return expression;
+        }
+
+        var updated = expression;
+        updated = Regex.Replace(updated, @"\*\s*0\.5\b", "/ 2", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"\*\s*0\.1\b", "/ 10", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"\*\s*1\.5\b", "* 3 / 2", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"\*\s*1\.2\b", "* 12 / 10", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"(?<![\w.])0\.7(?![\w.])", "70", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"(?<![\w.])0\.95(?![\w.])", "95", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"(?<![\w.])0\.1(?![\w.])", "10", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"(?<![\w.])0\.05(?![\w.])", "5", RegexOptions.IgnoreCase);
+        updated = Regex.Replace(updated, @"(?<![\w.])0\.01(?![\w.])", "1", RegexOptions.IgnoreCase);
+        return updated;
     }
 
     private static string BuildSceneTitleFromId(string sceneId)
@@ -2136,6 +2547,52 @@ internal sealed class GameCreationPipelineService
         }
     }
 
+    private static void NormalizeGeneratedRandomEvents(JsonObject root, string stage, string? category, List<string> warnings, Action<string>? log)
+    {
+        var worldState = EnsureWorldStateObject(root);
+        var ambientEvents = EnsureJsonArray(worldState, "ambientEvents");
+
+        MoveRandomEventsAlias(root, ambientEvents, "randomEvents", "$.randomEvents", warnings, log);
+        MoveRandomEventsAlias(root, ambientEvents, "controlledRandomEvents", "$.controlledRandomEvents", warnings, log);
+        MoveRandomEventsAlias(root, ambientEvents, "events", "$.events", warnings, log);
+        MoveRandomEventsAlias(root, ambientEvents, "ambientEvents", "$.ambientEvents", warnings, log);
+        MoveRandomEventsAlias(worldState, ambientEvents, "events", "$.worldState.events", warnings, log);
+
+        if (!HasJsonArrayItems(ambientEvents, _ => true)
+            && (IsRandomEventsStage(stage) || IsRandomEventsStage(category ?? string.Empty)))
+        {
+            worldState["enabled"] = true;
+        }
+    }
+
+    private static JsonObject EnsureWorldStateObject(JsonObject root)
+    {
+        if (root["worldState"] is JsonObject worldState)
+        {
+            return worldState;
+        }
+
+        worldState = new JsonObject();
+        root["worldState"] = worldState;
+        return worldState;
+    }
+
+    private static void MoveRandomEventsAlias(JsonObject owner, JsonArray target, string propertyName, string path, List<string> warnings, Action<string>? log)
+    {
+        if (owner[propertyName] is not JsonArray source || ReferenceEquals(source, target))
+        {
+            return;
+        }
+
+        foreach (var item in source)
+        {
+            target.Add(item?.DeepClone());
+        }
+
+        owner.Remove(propertyName);
+        AddNormalizationWarning(warnings, log, $"{path}: moved to $.worldState.ambientEvents.");
+    }
+
     private static void NormalizeGeneratedWorldState(JsonObject root, List<string> warnings, Action<string>? log)
     {
         if (root["worldState"] is not JsonObject worldState)
@@ -2185,9 +2642,14 @@ internal sealed class GameCreationPipelineService
                 continue;
             }
 
+            NormalizeAmbientEventId(ambientEvent, eventIndex, warnings, log);
+            NormalizeAmbientEventName(ambientEvent, eventIndex, warnings, log);
             NormalizeTriggerProperty(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}].trigger", warnings, log);
             NormalizeProbabilityProperty(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}]", warnings, log);
             NormalizeAmbientEventText(ambientEvent, eventIndex, warnings, log);
+            NormalizeSingularEffect(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}]", warnings, log);
+            NormalizeRulesEffect(ambientEvent, $"$.worldState.ambientEvents[{eventIndex}]", warnings, log);
+            EnsureAmbientEventNotEmpty(ambientEvent, eventIndex, warnings, log);
             NormalizeRequirementArray(ambientEvent["requirements"] as JsonArray, $"$.worldState.ambientEvents[{eventIndex}].requirements", warnings, log);
             NormalizeAmountArray(ambientEvent["effects"] as JsonArray, $"$.worldState.ambientEvents[{eventIndex}].effects", warnings, log);
         }
@@ -2453,7 +2915,13 @@ internal sealed class GameCreationPipelineService
 
     private static void NormalizeProbabilityProperty(JsonObject owner, string path, List<string> warnings, Action<string>? log)
     {
-        if (owner["chancePercent"] != null || owner["probability"] is not JsonValue probabilityValue)
+        if (owner["chancePercent"] != null)
+        {
+            return;
+        }
+
+        var sourceName = owner["probability"] is JsonValue ? "probability" : owner["chance"] is JsonValue ? "chance" : string.Empty;
+        if (string.IsNullOrWhiteSpace(sourceName) || owner[sourceName] is not JsonValue probabilityValue)
         {
             return;
         }
@@ -2463,9 +2931,36 @@ internal sealed class GameCreationPipelineService
             var chance = probability <= 1 ? (int)Math.Round(probability * 100) : (int)Math.Round(probability);
             chance = Math.Clamp(chance, 0, 100);
             owner["chancePercent"] = chance;
-            owner.Remove("probability");
-            AddNormalizationWarning(warnings, log, $"{path}.probability: moved to chancePercent={chance}.");
+            owner.Remove(sourceName);
+            AddNormalizationWarning(warnings, log, $"{path}.{sourceName}: moved to chancePercent={chance}.");
         }
+    }
+
+    private static void NormalizeAmbientEventId(JsonObject ambientEvent, int eventIndex, List<string> warnings, Action<string>? log)
+    {
+        if (ambientEvent["id"] is JsonValue idValue && idValue.TryGetValue<string>(out var id) && !string.IsNullOrWhiteSpace(id))
+        {
+            return;
+        }
+
+        var source = FirstNonEmptyJsonString(ambientEvent, "name", "title", "summary", "text", "description");
+        var safe = string.IsNullOrWhiteSpace(source)
+            ? "ambient_event_" + (eventIndex + 1).ToString("00")
+            : GameProjectManifestService.SafeId(source, "ambient_event");
+        ambientEvent["id"] = safe;
+        AddNormalizationWarning(warnings, log, $"$.worldState.ambientEvents[{eventIndex}].id: generated stable id '{safe}'.");
+    }
+
+    private static void NormalizeAmbientEventName(JsonObject ambientEvent, int eventIndex, List<string> warnings, Action<string>? log)
+    {
+        if (ambientEvent["name"] is JsonValue nameValue && nameValue.TryGetValue<string>(out var name) && !string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var source = FirstNonEmptyJsonString(ambientEvent, "title", "summary", "text", "description");
+        ambientEvent["name"] = string.IsNullOrWhiteSpace(source) ? "Событие" : Preview(source, 80);
+        AddNormalizationWarning(warnings, log, $"$.worldState.ambientEvents[{eventIndex}].name: filled from available event text.");
     }
 
     private static void NormalizeAmbientEventText(JsonObject ambientEvent, int eventIndex, List<string> warnings, Action<string>? log)
@@ -2477,6 +2972,37 @@ internal sealed class GameCreationPipelineService
 
         ambientEvent["text"] = description;
         AddNormalizationWarning(warnings, log, $"$.worldState.ambientEvents[{eventIndex}].description: copied to text.");
+    }
+
+    private static void NormalizeRulesEffect(JsonObject owner, string path, List<string> warnings, Action<string>? log)
+    {
+        if (owner["rules"] is not JsonObject rules || rules["effect"] is not JsonObject effectObject)
+        {
+            return;
+        }
+
+        if (owner["effects"] is not JsonArray effects)
+        {
+            effects = new JsonArray();
+            owner["effects"] = effects;
+        }
+
+        effects.Add(effectObject.DeepClone());
+        AddNormalizationWarning(warnings, log, $"{path}.rules.effect: moved to effects.");
+    }
+
+    private static void EnsureAmbientEventNotEmpty(JsonObject ambientEvent, int eventIndex, List<string> warnings, Action<string>? log)
+    {
+        var hasText = ambientEvent["text"] is JsonValue textValue && textValue.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text);
+        var hasEffects = ambientEvent["effects"] is JsonArray effects && effects.Count > 0;
+        if (hasText || hasEffects)
+        {
+            return;
+        }
+
+        var name = GetJsonString(ambientEvent, "name");
+        ambientEvent["text"] = string.IsNullOrWhiteSpace(name) ? "Событие меняет состояние мира." : name;
+        AddNormalizationWarning(warnings, log, $"$.worldState.ambientEvents[{eventIndex}]: empty no-op event received fallback text.");
     }
 
     private static void NormalizeSingularEffect(JsonObject owner, string path, List<string> warnings, Action<string>? log)
@@ -2495,6 +3021,20 @@ internal sealed class GameCreationPipelineService
         effects.Add(effectObject.DeepClone());
         owner.Remove("effect");
         AddNormalizationWarning(warnings, log, $"{path}.effect: moved to effects[0].");
+    }
+
+    private static string FirstNonEmptyJsonString(JsonObject item, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var value = GetJsonString(item, propertyName);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return string.Empty;
     }
 
     private static string GetJsonString(JsonObject item, string propertyName)

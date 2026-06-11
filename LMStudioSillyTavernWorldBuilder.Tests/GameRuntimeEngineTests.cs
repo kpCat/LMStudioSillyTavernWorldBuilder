@@ -19,6 +19,24 @@ public sealed class GameRuntimeEngineTests
     }
 
     [Fact]
+    public void CurrentScene_ResolvesAwayFromTechnicalFallback()
+    {
+        var engine = new GameRuntimeEngine();
+        var project = TestProjects.CreatePlayableProject();
+        project.Scenes[0].Text = "Fallback scene created because generated content did not contain scenes.";
+        project.Scenes[0].Choices.Clear();
+        project.Scenes.Add(new GameScene { Id = "scene_real", Title = "Реальная сцена", Text = "Игровое начало." });
+        var save = TestProjects.CreateSave(project);
+        save.CurrentSceneId = "scene_start";
+
+        var scene = engine.GetCurrentScene(project, save);
+
+        Assert.Equal("scene_next", scene.Id);
+        Assert.Equal("scene_next", save.CurrentSceneId);
+        Assert.Contains(save.EventLog, x => x.Contains("Runtime start scene repaired", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ChoiceTransition_AppliesAllSupportedEffects()
     {
         var engine = new GameRuntimeEngine();
@@ -1215,6 +1233,68 @@ public sealed class GameRuntimeEngineTests
         Assert.True(save.Combat.IsActive);
         Assert.Contains(save.Combat.Combatants, x => x.IsPlayer);
         Assert.Contains(save.Combat.Combatants, x => x.Team == "enemy");
+    }
+
+    [Fact]
+    public void ChoiceWithEncounterId_StartsCombatEncounterAndDoesNotResetToStart()
+    {
+        var engine = new GameRuntimeEngine();
+        var project = CreateCombatProject(10, 10, 100);
+        project.Scenes[0].StartsCombat = false;
+        project.Scenes[0].Choices.Clear();
+        project.Scenes[0].Choices.Add(new GameChoice
+        {
+            Id = "choice_attack_wolves",
+            Text = "Приготовиться к бою",
+            EncounterId = "encounter_battle"
+        });
+        var save = TestProjects.CreateSave(project);
+
+        var result = engine.ApplyChoiceWithResult(project, save, "choice_attack_wolves");
+
+        Assert.True(result.Success);
+        Assert.True(save.Combat.IsActive);
+        Assert.Equal("encounter_battle", save.Combat.EncounterId);
+        Assert.Equal("scene_start", save.CurrentSceneId);
+        Assert.Contains("Encounter started: encounter_battle", result.Message);
+    }
+
+    [Fact]
+    public void ChoiceWithNextSceneIdEncounter_StartsEncounterWithMigrationLog()
+    {
+        var engine = new GameRuntimeEngine();
+        var project = CreateCombatProject(10, 10, 100);
+        project.Scenes[0].StartsCombat = false;
+        project.Scenes[0].Choices.Clear();
+        project.Scenes[0].Choices.Add(new GameChoice
+        {
+            Id = "choice_legacy_encounter",
+            Text = "Fight",
+            NextSceneId = "encounter_battle"
+        });
+        var save = TestProjects.CreateSave(project);
+
+        var result = engine.ApplyChoiceWithResult(project, save, "choice_legacy_encounter");
+
+        Assert.True(result.Success);
+        Assert.True(save.Combat.IsActive);
+        Assert.Contains(save.EventLog, x => x.Contains("Migration warning", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ChoiceWithInvalidNextSceneId_KeepsCurrentSceneAndFails()
+    {
+        var engine = new GameRuntimeEngine();
+        var project = TestProjects.CreatePlayableProject();
+        project.Scenes[0].Choices[0].NextSceneId = "scene_missing";
+        var save = TestProjects.CreateSave(project);
+
+        var result = engine.ApplyChoiceWithResult(project, save, "choice_go");
+
+        Assert.False(result.Success);
+        Assert.Equal("scene_start", save.CurrentSceneId);
+        Assert.Equal(10, save.PlayerStats["will"]);
+        Assert.Contains("Transition failed", result.Message);
     }
 
     [Fact]

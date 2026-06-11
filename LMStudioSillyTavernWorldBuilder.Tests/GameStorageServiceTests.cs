@@ -22,6 +22,19 @@ public sealed class GameStorageServiceTests
     }
 
     [Fact]
+    public void CreateNewProject_UsesAsciiTechnicalIdsForCyrillicTitle()
+    {
+        var service = new GameStorageService();
+        var root = TestPaths.CreateTempDirectory();
+
+        var project = service.CreateNewProject(root, "Носитель Метамодулей");
+
+        Assert.Equal("Носитель Метамодулей", project.Meta.Title);
+        Assert.Matches("^[a-z0-9_-]+$", project.Meta.Id);
+        Assert.Matches("^[a-z0-9_-]+$", project.Summary.FolderName);
+    }
+
+    [Fact]
     public async Task SaveLoadProject_PreservesSeparateGenerationPreferences()
     {
         var service = new GameStorageService();
@@ -62,6 +75,73 @@ public sealed class GameStorageServiceTests
         Assert.True(File.Exists(Path.Combine(project.Summary.ProjectPath, "manifest.json")));
         Assert.True(File.Exists(Path.Combine(project.Summary.ProjectPath, "data", "scenes", "scene_start.json")));
         Assert.True(File.Exists(Path.Combine(project.Summary.ProjectPath, "data", "characters", "npc.json")));
+    }
+
+    [Fact]
+    public async Task SaveProject_WritesReadableCyrillicJson()
+    {
+        var service = new GameStorageService();
+        var root = TestPaths.CreateTempDirectory();
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = Path.Combine(root, "Readable");
+        project.Meta.Title = "Носитель Метамодулей";
+        project.Scenes[0].Title = "Начало";
+        project.Scenes[0].Text = "Русский текст сцены.";
+
+        await service.SaveProjectAsync(root, project);
+
+        var sceneJson = await File.ReadAllTextAsync(Path.Combine(project.Summary.ProjectPath, "data", "scenes", "scene_start.json"));
+        Assert.Contains("Русский текст сцены", sceneJson);
+        Assert.DoesNotContain("\\u0420", sceneJson);
+    }
+
+    [Fact]
+    public async Task LoadProject_RepairsTechnicalFallbackBridge()
+    {
+        var service = new GameStorageService();
+        var root = TestPaths.CreateTempDirectory();
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = Path.Combine(root, "Contaminated");
+        project.Scenes[0].Text = "Fallback scene created because generated content did not contain scenes.";
+        project.Scenes[0].Choices.Clear();
+        project.Scenes.Add(new GameScene { Id = "scene_border_glitch_discovery", Title = "Разрыв", Text = "Реальная сцена." });
+        await service.SaveProjectAsync(root, project);
+
+        var loaded = await service.LoadProjectAsync(project.Summary.ProjectPath);
+        var start = loaded.Scenes.First(x => x.Id == "scene_start");
+
+        Assert.Equal("Начало", start.Title);
+        Assert.DoesNotContain("Fallback scene", start.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("scene_next", Assert.Single(start.Choices).NextSceneId);
+        Assert.Equal("scene_start", loaded.Meta.StartSceneId);
+    }
+
+    [Fact]
+    public void SyncSaveWithProject_AddsGeneratedContentAndRepairsScene()
+    {
+        var service = new GameStorageService();
+        var project = TestProjects.CreatePlayableProject();
+        project.Scenes[0].Text = "Fallback scene created because generated content did not contain scenes.";
+        project.Scenes[0].Choices.Clear();
+        project.Scenes[1].LocationId = "location_start";
+        project.Locations.Add(new GameLocation { Id = "location_start", Name = "Старт" });
+        project.Scenes.Add(new GameScene { Id = "scene_real", Title = "Реальная", Text = "Игровая сцена.", LocationId = "location_start" });
+        project.Stats.Add(new GameStatDefinition { Id = "stamina", Name = "Stamina", InitialValue = 25 });
+        project.Currencies.Add(new GameCurrencyDefinition { Id = "fragments", Name = "Фрагменты", InitialAmount = 3 });
+        project.Variables.Add(new GameVariableDefinition { Id = "metamodule_sync", Name = "Синхронизация", InitialValue = 7 });
+        project.Skills.Add(new GameSkillDefinition { Id = "scan", Name = "Сканирование", IsKnownByDefault = true });
+        var save = TestProjects.CreateSave(project);
+        save.CurrentSceneId = "scene_start";
+        save.PlayerStats.Remove("stamina");
+
+        service.SyncSaveWithProject(project, save);
+
+        Assert.Equal(25, save.PlayerStats["stamina"]);
+        Assert.Equal(3, save.Currencies["fragments"]);
+        Assert.Equal(7, save.Variables["metamodule_sync"]);
+        Assert.Contains(save.KnownSkills, x => x.SkillId == "scan");
+        Assert.Equal("scene_next", save.CurrentSceneId);
+        Assert.Equal("location_start", save.CurrentLocationId);
     }
 
     [Fact]
@@ -216,5 +296,25 @@ public sealed class GameStorageServiceTests
 
         Assert.Equal(77, loaded.PlayerStats["health"]);
         Assert.Equal(project.Meta.StartSceneId, loaded.CurrentSceneId);
+    }
+
+    [Fact]
+    public async Task SaveProgress_AfterSuccessfulChoice_UpdatesAutosaveSceneAndEventLog()
+    {
+        var service = new GameStorageService();
+        var root = TestPaths.CreateTempDirectory();
+        var project = TestProjects.CreatePlayableProject();
+        project.Summary.ProjectPath = Path.Combine(root, "AutosaveChoice");
+        await service.SaveProjectAsync(root, project);
+        var save = service.CreateInitialSave(project, "autosave");
+        var engine = new LMStudioSillyTavernWorldBuilder.Runtime.GameRuntimeEngine();
+
+        var result = engine.ApplyChoiceWithResult(project, save, "choice_go");
+        await service.SaveProgressAsync(project, save, "autosave.json");
+        var loaded = await service.LoadProgressAsync(project, "autosave.json");
+
+        Assert.True(result.Success);
+        Assert.Equal("scene_next", loaded.CurrentSceneId);
+        Assert.NotEmpty(loaded.EventLog);
     }
 }

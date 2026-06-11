@@ -333,8 +333,8 @@ public sealed class GameDraftServiceTests
         Assert.Equal("enemy", enemy.Team);
         Assert.False(enemy.IsPlayer);
         Assert.Contains("enemy_glitch_attack", enemy.ActionIds);
-        Assert.Equal("clamp(stat.will * 1.2 + dice(1, 6), 1, 100)", project.Combat!.DefaultHitChanceFormulaExpression);
-        Assert.Equal("clamp(stat.stamina * 0.5, 1, 100)", project.Combat.DefaultBlockChanceFormulaExpression);
+        Assert.Equal("clamp(stat.will * 12 / 10 + dice(1, 6), 1, 100)", project.Combat!.DefaultHitChanceFormulaExpression);
+        Assert.Equal("clamp(stat.stamina / 2, 1, 100)", project.Combat.DefaultBlockChanceFormulaExpression);
         Assert.DoesNotContain("combatActions", normalized);
         Assert.DoesNotContain("combatEncounters", normalized);
         Assert.Contains(warnings, x => x.Contains("combatActions", StringComparison.OrdinalIgnoreCase));

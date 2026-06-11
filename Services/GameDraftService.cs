@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Storage;
@@ -12,7 +13,8 @@ internal sealed class GameDraftService
     private readonly GameProjectCloneService _cloneService = new();
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public async Task<GameDraftSession> SaveRawDraftAsync(GameProjectData project, string stage, string userRequest, string rawOutput, CancellationToken token)

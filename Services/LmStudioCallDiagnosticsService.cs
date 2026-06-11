@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 using LMStudioSillyTavernWorldBuilder.Providers;
@@ -7,7 +8,10 @@ namespace LMStudioSillyTavernWorldBuilder.Services;
 internal sealed class LmStudioCallDiagnosticsService
 {
     private readonly PromptBudgetService _promptBudgetService = new();
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     public LmStudioCallDiagnosticRecord CreateSuccessRecord(
         string stage,

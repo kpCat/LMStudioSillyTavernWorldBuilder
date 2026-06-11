@@ -43,7 +43,7 @@ internal sealed class GameProjectValidator
         AddDuplicateErrors(project.LocationConnections.Select(x => x.Id), "Location connection", result);
         var locationStateIds = AddDuplicateErrors(project.LocationStates.Select(x => x.Id), "Location state", result);
         var questIds = AddDuplicateErrors(project.Quests.Select(x => x.Id), "Quest", result);
-        AddDuplicateErrors(project.Encounters.Select(x => x.Id), "Encounter", result);
+        var encounterIds = AddDuplicateErrors(project.Encounters.Select(x => x.Id), "Encounter", result);
         var actionIds = AddDuplicateErrors(project.Actions.Select(x => x.Id), "Action", result);
         var formulaIds = AddDuplicateErrors(project.Formulas.Select(x => x.Id), "Formula", result);
         var statusEffectIds = AddDuplicateErrors(project.StatusEffects.Select(x => x.Id), "Status effect", result);
@@ -56,7 +56,7 @@ internal sealed class GameProjectValidator
                 result.Warnings.Add($"Scene '{scene.Id}' points to missing location '{scene.LocationId}'.");
             }
 
-            ValidateChoices(scene.Choices, scene.Id, sceneIds, statIds, itemIds, skillIds, currencyIds, locationIds, locationStateIds, variableIds, questIds, formulaIds, statusEffectIds, progressionNodeIds, result);
+            ValidateChoices(scene.Choices, scene.Id, sceneIds, encounterIds, statIds, itemIds, skillIds, currencyIds, locationIds, locationStateIds, variableIds, questIds, formulaIds, statusEffectIds, progressionNodeIds, result);
         }
 
         foreach (var slot in project.EquipmentSlots.GroupBy(x => x.Order).Where(x => x.Count() > 1))
@@ -144,7 +144,7 @@ internal sealed class GameProjectValidator
 
             ValidateRequirements(encounter.Requirements, statIds, itemIds, skillIds, currencyIds, locationIds, locationStateIds, variableIds, formulaIds, statusEffectIds, progressionNodeIds, result, "encounter " + encounter.Id);
             ValidateEffects(encounter.OnStartEffects.Concat(encounter.OnWinEffects).Concat(encounter.OnLoseEffects), statIds, itemIds, skillIds, currencyIds, locationIds, locationStateIds, variableIds, questIds, statusEffectIds, progressionNodeIds, result, "encounter " + encounter.Id);
-            ValidateChoices(encounter.Choices, "encounter " + encounter.Id, sceneIds, statIds, itemIds, skillIds, currencyIds, locationIds, locationStateIds, variableIds, questIds, formulaIds, statusEffectIds, progressionNodeIds, result);
+            ValidateChoices(encounter.Choices, "encounter " + encounter.Id, sceneIds, encounterIds, statIds, itemIds, skillIds, currencyIds, locationIds, locationStateIds, variableIds, questIds, formulaIds, statusEffectIds, progressionNodeIds, result);
         }
 
         foreach (var action in project.Actions)
@@ -184,6 +184,7 @@ internal sealed class GameProjectValidator
         ValidateExperience(project, result);
         ValidateWorldState(project, result, locationIds);
         ValidateCombat(project, statIds, actionIds, result);
+        ValidateCombatReachability(project, result);
 
         foreach (var relationship in project.Relationships)
         {
@@ -313,6 +314,62 @@ internal sealed class GameProjectValidator
             or "stat" or "resource" or "item" or "currency" or "experience" or "playerexperience" or "skillexperience"
             or "relationship" or "quest" or "variable" or "flag" or "learnskill" or "skill" or "status" or "statuseffect"
             or "progression" or "unlockprogression" or "advancetime" or "timesegment" or "worldstate" or "worldaspect" or "log";
+    }
+
+    private static void ValidateCombatReachability(GameProjectData project, GameProjectValidationResult result)
+    {
+        var combatEncounters = project.Encounters.Where(IsCombatEncounter).ToList();
+        if (combatEncounters.Count == 0)
+        {
+            return;
+        }
+
+        var reachableEncounterIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var scene in project.Scenes)
+        {
+            foreach (var choice in scene.Choices)
+            {
+                if (!string.IsNullOrWhiteSpace(choice.EncounterId))
+                {
+                    reachableEncounterIds.Add(choice.EncounterId);
+                }
+                if (!string.IsNullOrWhiteSpace(choice.NextSceneId)
+                    && project.Encounters.Any(x => string.Equals(x.Id, choice.NextSceneId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    reachableEncounterIds.Add(choice.NextSceneId);
+                }
+            }
+
+            if (scene.StartsCombat)
+            {
+                foreach (var encounter in combatEncounters.Where(x => string.Equals(x.SceneId, scene.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    reachableEncounterIds.Add(encounter.Id);
+                }
+            }
+        }
+
+        foreach (var encounter in combatEncounters.Where(x => !reachableEncounterIds.Contains(x.Id)))
+        {
+            result.Warnings.Add("combat_encounter_unreachable: " + encounter.Id);
+        }
+    }
+
+    private static bool IsCombatEncounter(GameEncounterDefinition encounter)
+    {
+        return string.Equals(encounter.Kind, "combat", StringComparison.OrdinalIgnoreCase)
+            || encounter.Combatants.Count > 0;
+    }
+
+    private static bool IsCombatChoice(GameChoice choice)
+    {
+        var text = string.Join(" ", choice.Id, choice.Text).ToLowerInvariant();
+        return text.Contains("бой", StringComparison.Ordinal)
+            || text.Contains("схват", StringComparison.Ordinal)
+            || text.Contains("attack", StringComparison.Ordinal)
+            || text.Contains("fight", StringComparison.Ordinal)
+            || text.Contains("combat", StringComparison.Ordinal)
+            || text.Contains("приготовиться к бою", StringComparison.Ordinal);
     }
 
     private static void ValidateMechanics(GameProjectData project, HashSet<string> formulaIds, HashSet<string> statusEffectIds, HashSet<string> progressionNodeIds, HashSet<string> skillIds, GameProjectValidationResult result)
@@ -879,13 +936,30 @@ internal sealed class GameProjectValidator
         };
     }
 
-    private static void ValidateChoices(IEnumerable<GameChoice> choices, string owner, HashSet<string> sceneIds, HashSet<string> statIds, HashSet<string> itemIds, HashSet<string> skillIds, HashSet<string> currencyIds, HashSet<string> locationIds, HashSet<string> locationStateIds, HashSet<string> variableIds, HashSet<string> questIds, HashSet<string> formulaIds, HashSet<string> statusEffectIds, HashSet<string> progressionNodeIds, GameProjectValidationResult result)
+    private static void ValidateChoices(IEnumerable<GameChoice> choices, string owner, HashSet<string> sceneIds, HashSet<string> encounterIds, HashSet<string> statIds, HashSet<string> itemIds, HashSet<string> skillIds, HashSet<string> currencyIds, HashSet<string> locationIds, HashSet<string> locationStateIds, HashSet<string> variableIds, HashSet<string> questIds, HashSet<string> formulaIds, HashSet<string> statusEffectIds, HashSet<string> progressionNodeIds, GameProjectValidationResult result)
     {
         foreach (var choice in choices)
         {
+            if (!string.IsNullOrWhiteSpace(choice.EncounterId) && !encounterIds.Contains(choice.EncounterId))
+            {
+                result.Errors.Add($"Choice '{choice.Id}' in {owner} points to missing encounter '{choice.EncounterId}'.");
+            }
+
             if (!string.IsNullOrWhiteSpace(choice.NextSceneId) && !sceneIds.Contains(choice.NextSceneId))
             {
-                result.Errors.Add($"Choice '{choice.Id}' in {owner} points to missing scene '{choice.NextSceneId}'.");
+                if (encounterIds.Contains(choice.NextSceneId))
+                {
+                    result.Warnings.Add($"Choice '{choice.Id}' in {owner} uses nextSceneId as encounter id '{choice.NextSceneId}'; use EncounterId instead.");
+                }
+                else
+                {
+                    result.Errors.Add($"Choice '{choice.Id}' in {owner} points to missing scene '{choice.NextSceneId}'.");
+                }
+            }
+
+            if (IsCombatChoice(choice) && string.Equals(choice.NextSceneId, "scene_start", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Warnings.Add($"combat_choice_points_to_start_scene: Choice '{choice.Id}' in {owner} looks like combat but points to scene_start.");
             }
 
             ValidateConditions(choice.Conditions, statIds, itemIds, skillIds, currencyIds, locationIds, locationStateIds, variableIds, statusEffectIds, progressionNodeIds, result, "choice " + choice.Id + " in " + owner);

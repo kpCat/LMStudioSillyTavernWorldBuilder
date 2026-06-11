@@ -774,6 +774,9 @@ public static readonly PromptPreset GameRevision = new("GameRevision", """"
 - Рандом должен соответствовать design profile, текущему миру, локациям, времени и уже существующим ID из контекста.
 - Используй существующие locations, location tags, time segments и world aspects, когда они есть.
 - ambientEvents должны иметь id, name, kind, trigger, description, text, weight, chancePercent, cooldownTurns, requirements/effects, tags.
+- Output must be partial GameProjectData. If random events are needed, output exactly worldState.ambientEvents.
+- Do not invent unsupported top-level collections. Normalizer accepts randomEvents/controlledRandomEvents/events/ambientEvents aliases, but canonical output is worldState.ambientEvents.
+- Every ambient event must have id, name, text or description, trigger, chancePercent.
 - Используй runtime triggers: turnEnd, travel, action. Если входной отчёт говорит actionEnd, в JSON всё равно используй action.
 - chancePercent держи в 0..100, weight > 0, cooldownTurns обычно 2..8 для часто встречающихся событий.
 - Не дублируй existing AmbientEventIds и RuleIds.
@@ -913,6 +916,8 @@ Use only stat/currency/variable IDs present in compact context. Do not invent un
 Узлы должны ссылаться на существующие Skills из compact context, если они уже есть.
 Если нужен новый навык, лучше предложить отдельную batch skills, а не смешивать создание навыков внутри progression.
 Используйте ParentNodeIds, UnlockRequirements, UnlockCosts и UnlockEffects. Не создавайте циклы зависимостей.
+Use only real GameProjectData fields: top-level progressionNodes, mechanics.enableProgression, mechanics.experience, and supported requirements/costs/effects. Do not output invented top-level progression, levels, unlocks, rewards, talents, perks, or trees collections.
+Every progression entity must be reachable through parentNodeIds, unlockRequirements, unlockCosts, unlockEffects, skillId, or an existing runtime effect such as progression/unlockProgression, playerExperience, skillExperience, playerLevel, learnSkill.
 Редкие навыки должны требовать несколько разных условий: ресурс/валюту, уровень навыка, выполненный квест, предмет, переменную или открытый предыдущий узел.
 Квестовый выбор может открывать узел эффектом progression/unlockProgression; тренировка и книги могут давать skillExperience или learnSkill.
 """, new GenerationSettings(0.40, 0.90, 0.05, 40, 1.05, 0.00, 4500));
@@ -941,6 +946,9 @@ Use only IDs from compact context. For the current MVP smoke these known IDs are
 Запрещены top-level поля combatActions и combatEncounters. Не используй их никогда.
 Combat actions должны быть обычными actions с availableInCombat=true, actorTeam и targetScope.
 Combat encounters должны быть обычными encounters с kind="combat" и combatants.
+Если scene choice должен запускать бой, используй choice.encounterId="<combat encounter id>", а не nextSceneId.
+Choice.nextSceneId должен ссылаться только на scene id. Не ставь nextSceneId="scene_start" для боевых choices.
+Каждый combat encounter должен быть достижим через scene choice encounterId или scene.startsCombat.
 Используй combat.enabled=true, playerHealthStatId и при необходимости defaultHitChanceFormulaExpression/defaultDodgeChanceFormulaExpression/defaultBlockChanceFormulaExpression/defaultCritChanceFormulaExpression.
 Encounter для боя должен иметь combatants: player/ally и enemy, team, isPlayer, actionIds, stats с числовым health, victorySceneId/defeatSceneId при необходимости, onWinEffects для наград.
 Combatant должен использовать team/isPlayer, не role. Не вкладывай actions внутрь combatants; все действия должны быть в top-level actions, а combatants ссылаются на них через actionIds.
@@ -949,6 +957,7 @@ Every combatant actionIds entry must point to an action in top-level actions. If
 Для наград после победы используй encounter.OnWinEffects: playerExperience, skillExperience, item, currency, flag, quest.
 Используй только существующие stats из compact context. Для текущего MVP smoke обычно доступны health, will, stamina, stability. Не используй agility, strength, mana, если таких stats нет в compact context. Если сомневаешься, используй will и stamina.
 Combat formulas могут использовать actor.<statId> и target.<statId>; например clamp(85 + actor.will - target.will, 5, 100).
+Formula expressions are integer-only. Do not use decimal literals like 0.7, 0.5, 0.1, 0.05, or 1.5. Use integer percent formulas: 70 instead of 0.7, stat.will / 2 instead of stat.will * 0.5.
 В effects/costs amount всегда должен быть integer JSON number. Для формул используй formulaId или formulaExpression рядом с amount fallback.
 Не генерируй отдельный движок боя, AI, код, скрипты или баланс-симулятор.
 """, new GenerationSettings(0.45, 0.90, 0.05, 40, 1.05, 0.00, 5000));

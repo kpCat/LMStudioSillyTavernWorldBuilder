@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using LMStudioSillyTavernWorldBuilder.Models;
 
@@ -25,11 +24,7 @@ internal sealed class GameMvpOrchestratorService
 
     private readonly GameRandomDirectorService _randomDirectorService = new();
     private readonly GameBalanceSimulatorService _balanceSimulatorService = new();
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    private readonly JsonSerializerOptions _jsonOptions = GenerationJsonOptions.UiJson;
 
     public GameMvpReadinessReport BuildReadinessReport(GameProjectData project)
     {
@@ -42,7 +37,7 @@ internal sealed class GameMvpOrchestratorService
         AddStage(report, "actions", "Игровые действия", project.Actions.Count, TargetActions, 40, "Действия дают игроку повторяемый интерактивный цикл.");
         AddStage(report, "world_state", "Состояние мира", CountWorldStateFoundation(project), TargetWorldState, 45, "WorldState нужен для времени, атмосферы, правил или событий.");
         AddStage(report, "locations", "Локации", project.Locations.Count, TargetLocations, 50, "Нужна стартовая карта из нескольких мест.");
-        AddStage(report, "scenes", "Сцены", project.Scenes.Count, TargetScenes, 60, "Playable MVP требует достаточного числа сцен и развилок.");
+        AddStage(report, "scenes", "Сцены", GameSceneSafety.CountPlayableScenes(project), TargetScenes, 60, "Playable MVP требует достаточного числа сцен и развилок.");
         AddStage(report, "items", "Предметы", project.Items.Count, TargetItems, 70, "Предметы и награды поддерживают исследование, проверки и ресурсы.");
 
         if (signals.InventoryRelevant)
@@ -254,11 +249,24 @@ internal sealed class GameMvpOrchestratorService
         {
             AddIssue(report, "start_scene_empty", "Есть сцены, но Meta.StartSceneId пустой.", GameMvpReadinessSeverity.Error, "scenes");
         }
-        if (!string.IsNullOrWhiteSpace(project.Meta.StartSceneId)
-            && project.Scenes.Count > 0
-            && project.Scenes.All(x => !string.Equals(x.Id, project.Meta.StartSceneId, StringComparison.OrdinalIgnoreCase)))
+        var startScene = string.IsNullOrWhiteSpace(project.Meta.StartSceneId)
+            ? null
+            : project.Scenes.FirstOrDefault(x => string.Equals(x.Id, project.Meta.StartSceneId, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(project.Meta.StartSceneId) && project.Scenes.Count > 0 && startScene == null)
         {
             AddIssue(report, "start_scene_missing", "Meta.StartSceneId не найден среди сцен.", GameMvpReadinessSeverity.Error, "scenes", project.Meta.StartSceneId);
+        }
+        if (GameSceneSafety.IsTechnicalFallback(startScene))
+        {
+            AddIssue(report, "start_scene_is_fallback", "Стартовая сцена ведёт в техническую fallback-заглушку.", GameMvpReadinessSeverity.Error, "scenes", project.Meta.StartSceneId);
+        }
+        if (startScene != null && string.IsNullOrWhiteSpace(startScene.Text))
+        {
+            AddIssue(report, "start_scene_text_empty", "Стартовая сцена не содержит текста.", GameMvpReadinessSeverity.Error, "scenes", startScene.Id);
+        }
+        if (startScene != null && startScene.Choices.Count == 0 && GameSceneSafety.HasPlayableFlow(project))
+        {
+            AddIssue(report, "start_scene_without_choices", "В проекте есть playable flow, но стартовая сцена не содержит выбора.", GameMvpReadinessSeverity.Error, "scenes", startScene.Id);
         }
         if (project.Scenes.Count > 0 && project.Scenes.All(x => x.Choices.Count == 0))
         {
@@ -267,6 +275,10 @@ internal sealed class GameMvpOrchestratorService
         if (signals.CombatRelevant && project.Actions.Count(x => x.AvailableInCombat) == 0)
         {
             AddIssue(report, "combat_without_actions", "Боёвка релевантна, но combat actions отсутствуют.", GameMvpReadinessSeverity.Warning, "combat");
+        }
+        if (signals.CombatRelevant)
+        {
+            AddCombatReachabilityIssues(report, project);
         }
         if (signals.RandomnessRelevant)
         {
@@ -379,6 +391,50 @@ internal sealed class GameMvpOrchestratorService
         return contentRich && (signals.CombatRelevant || signals.ProgressionRelevant || project.Currencies.Count > 0);
     }
 
+    private static void AddCombatReachabilityIssues(GameMvpReadinessReport report, GameProjectData project)
+    {
+        var combatEncounters = project.Encounters.Where(IsCombatEncounter).ToList();
+        if (combatEncounters.Count == 0)
+        {
+            return;
+        }
+
+        var reachableEncounterIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var scene in project.Scenes)
+        {
+            foreach (var choice in scene.Choices)
+            {
+                if (IsCombatChoice(choice) && string.Equals(choice.NextSceneId, "scene_start", StringComparison.OrdinalIgnoreCase))
+                {
+                    AddIssue(report, "combat_choice_points_to_start_scene", "Боевой choice ведёт на scene_start вместо encounterId.", GameMvpReadinessSeverity.Error, "combat", choice.Id);
+                }
+
+                if (!string.IsNullOrWhiteSpace(choice.EncounterId))
+                {
+                    reachableEncounterIds.Add(choice.EncounterId);
+                }
+                if (!string.IsNullOrWhiteSpace(choice.NextSceneId)
+                    && project.Encounters.Any(x => string.Equals(x.Id, choice.NextSceneId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    reachableEncounterIds.Add(choice.NextSceneId);
+                }
+            }
+
+            if (scene.StartsCombat)
+            {
+                foreach (var encounter in combatEncounters.Where(x => string.Equals(x.SceneId, scene.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    reachableEncounterIds.Add(encounter.Id);
+                }
+            }
+        }
+
+        foreach (var encounter in combatEncounters.Where(x => !reachableEncounterIds.Contains(x.Id)))
+        {
+            AddIssue(report, "combat_encounter_unreachable", "Combat encounter не достижим из scene choices, StartsCombat или encounterId.", GameMvpReadinessSeverity.Error, "combat", encounter.Id);
+        }
+    }
+
     private static MvpSignals BuildSignals(GameProjectData project)
     {
         var text = BuildSignalText(project);
@@ -448,6 +504,23 @@ internal sealed class GameMvpOrchestratorService
         return string.Equals(skill.Kind, "spell", StringComparison.OrdinalIgnoreCase)
             || skill.Tags.Contains("spell", StringComparer.OrdinalIgnoreCase)
             || skill.Tags.Contains("magic", StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCombatEncounter(GameEncounterDefinition encounter)
+    {
+        return string.Equals(encounter.Kind, "combat", StringComparison.OrdinalIgnoreCase)
+            || encounter.Combatants.Count > 0;
+    }
+
+    private static bool IsCombatChoice(GameChoice choice)
+    {
+        var text = string.Join(" ", choice.Id, choice.Text).ToLowerInvariant();
+        return text.Contains("бой", StringComparison.Ordinal)
+            || text.Contains("схват", StringComparison.Ordinal)
+            || text.Contains("attack", StringComparison.Ordinal)
+            || text.Contains("fight", StringComparison.Ordinal)
+            || text.Contains("combat", StringComparison.Ordinal)
+            || text.Contains("приготовиться к бою", StringComparison.Ordinal);
     }
 
     private static bool ContainsAny(string text, params string[] needles)

@@ -1,4 +1,5 @@
 ﻿using LMStudioSillyTavernWorldBuilder.Models;
+using LMStudioSillyTavernWorldBuilder.Services;
 using LMStudioSillyTavernWorldBuilder.Storage;
 
 namespace LMStudioSillyTavernWorldBuilder.Runtime;
@@ -26,15 +27,39 @@ internal sealed class GameRuntimeEngine
         public T Value { get; init; } = default!;
     }
 
+    private sealed class ChoiceTransitionResult
+    {
+        public bool Success { get; init; }
+        public string Message { get; init; } = string.Empty;
+        public string NextSceneId { get; init; } = string.Empty;
+        public string EncounterId { get; init; } = string.Empty;
+        public bool LegacyNextSceneEncounter { get; init; }
+
+        public static ChoiceTransitionResult Failure(string message)
+        {
+            return new ChoiceTransitionResult { Success = false, Message = message };
+        }
+    }
+
     public GameScene GetCurrentScene(GameProjectData project, SaveGame save)
     {
-        var sceneId = string.IsNullOrWhiteSpace(save.CurrentSceneId)
-            ? project.Meta.StartSceneId
-            : save.CurrentSceneId;
+        var oldSceneId = save.CurrentSceneId;
+        var scene = GameSceneSafety.ResolvePlayableStartScene(project, oldSceneId);
+        if (scene == null)
+        {
+            return new GameScene { Id = "missing_scene", Title = "Нет сцен", Text = "В проекте пока нет игровых сцен." };
+        }
 
-        return project.Scenes.FirstOrDefault(x => string.Equals(x.Id, sceneId, StringComparison.OrdinalIgnoreCase))
-            ?? project.Scenes.FirstOrDefault()
-            ?? new GameScene { Id = "missing_scene", Title = "Нет сцен", Text = "В проекте пока нет игровых сцен." };
+        if (!string.Equals(oldSceneId, scene.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            save.CurrentSceneId = scene.Id;
+            if (!string.IsNullOrWhiteSpace(oldSceneId))
+            {
+                save.EventLog.Add($"[{DateTime.Now:HH:mm:ss}] Runtime start scene repaired: old='{oldSceneId}', new='{scene.Id}'.");
+            }
+        }
+
+        return scene;
     }
 
     public IReadOnlyList<GameChoice> GetAvailableChoices(GameProjectData project, SaveGame save)
@@ -167,6 +192,12 @@ internal sealed class GameRuntimeEngine
             return OperationFailure("Условия выбора не выполнены.");
         }
 
+        var transition = ResolveChoiceTransition(project, scene, choice);
+        if (!transition.Success)
+        {
+            return OperationFailure(transition.Message);
+        }
+
         var effects = ResolveEffectsForExecution(project, save, choice.Effects);
         if (!effects.Success)
         {
@@ -180,10 +211,24 @@ internal sealed class GameRuntimeEngine
 
         var beforeLogCount = save.EventLog.Count;
         ApplyResolvedEffects(project, save, effects.Value);
-        if (!string.IsNullOrWhiteSpace(choice.NextSceneId))
+
+        if (!string.IsNullOrWhiteSpace(transition.EncounterId))
         {
-            save.CurrentSceneId = choice.NextSceneId;
-            var nextScene = project.Scenes.FirstOrDefault(x => string.Equals(x.Id, choice.NextSceneId, StringComparison.OrdinalIgnoreCase));
+            var encounterResult = StartEncounterFromChoice(project, save, transition.EncounterId, choice.Id, transition.LegacyNextSceneEncounter);
+            if (!encounterResult.Success)
+            {
+                return encounterResult;
+            }
+
+            var encounterMessage = "Encounter started: " + transition.EncounterId;
+            AddRuntimeLog(save, encounterMessage);
+            return OperationSuccess(encounterMessage, save.EventLog.Skip(beforeLogCount).ToList(), effects.Value.Where(x => x.ShouldApply).Select(x => DescribeEffect(x.Source, x.ResolvedAmount)).ToList());
+        }
+
+        if (!string.IsNullOrWhiteSpace(transition.NextSceneId))
+        {
+            save.CurrentSceneId = transition.NextSceneId;
+            var nextScene = project.Scenes.FirstOrDefault(x => string.Equals(x.Id, transition.NextSceneId, StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(nextScene?.LocationId))
             {
                 save.CurrentLocationId = nextScene.LocationId;
@@ -195,6 +240,74 @@ internal sealed class GameRuntimeEngine
         var message = choice.Text;
         save.EventLog.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
         return OperationSuccess(message, save.EventLog.Skip(beforeLogCount).ToList(), effects.Value.Where(x => x.ShouldApply).Select(x => DescribeEffect(x.Source, x.ResolvedAmount)).ToList());
+    }
+
+    private static ChoiceTransitionResult ResolveChoiceTransition(GameProjectData project, GameScene scene, GameChoice choice)
+    {
+        var encounterId = choice.EncounterId?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(encounterId))
+        {
+            return project.Encounters.Any(x => string.Equals(x.Id, encounterId, StringComparison.OrdinalIgnoreCase))
+                ? new ChoiceTransitionResult { Success = true, EncounterId = encounterId }
+                : ChoiceTransitionResult.Failure($"Transition failed: choice='{choice.Id}', encounterId='{encounterId}', reason='encounter not found'.");
+        }
+
+        var nextSceneId = choice.NextSceneId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(nextSceneId))
+        {
+            return new ChoiceTransitionResult { Success = true };
+        }
+
+        if (project.Scenes.Any(x => string.Equals(x.Id, nextSceneId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return new ChoiceTransitionResult { Success = true, NextSceneId = nextSceneId };
+        }
+
+        if (project.Encounters.Any(x => string.Equals(x.Id, nextSceneId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return new ChoiceTransitionResult { Success = true, EncounterId = nextSceneId, LegacyNextSceneEncounter = true };
+        }
+
+        return ChoiceTransitionResult.Failure($"Transition failed: choice='{choice.Id}', nextSceneId='{nextSceneId}', reason='scene not found'.");
+    }
+
+    private GameRuntimeOperationResult StartEncounterFromChoice(GameProjectData project, SaveGame save, string encounterId, string choiceId, bool legacyNextSceneEncounter)
+    {
+        var encounter = project.Encounters.FirstOrDefault(x => string.Equals(x.Id, encounterId, StringComparison.OrdinalIgnoreCase));
+        if (encounter == null)
+        {
+            return OperationFailure($"Transition failed: choice='{choiceId}', encounterId='{encounterId}', reason='encounter not found'.");
+        }
+
+        if (legacyNextSceneEncounter)
+        {
+            AddRuntimeLog(save, $"Migration warning: choice '{choiceId}' used nextSceneId as encounter id '{encounterId}'.");
+        }
+
+        if (string.Equals(encounter.Kind, "combat", StringComparison.OrdinalIgnoreCase) || encounter.Combatants.Count > 0)
+        {
+            return StartEncounterCombatWithResult(project, save, encounter.Id);
+        }
+
+        var startEffects = ResolveEffectsForExecution(project, save, encounter.OnStartEffects);
+        if (!startEffects.Success)
+        {
+            return OperationFailure("Ошибка старта encounter: " + startEffects.Message);
+        }
+
+        var validation = ValidateResolvedEffectsBeforeMutation(project, save, startEffects.Value);
+        if (!validation.Success)
+        {
+            return OperationFailure("Ошибка старта encounter: " + validation.Message);
+        }
+
+        ApplyResolvedEffects(project, save, startEffects.Value);
+        if (!string.IsNullOrWhiteSpace(encounter.SceneId) && project.Scenes.Any(x => string.Equals(x.Id, encounter.SceneId, StringComparison.OrdinalIgnoreCase)))
+        {
+            save.CurrentSceneId = encounter.SceneId;
+        }
+
+        return OperationSuccess("Encounter started: " + encounter.Id);
     }
 
     public bool AddItem(GameProjectData project, SaveGame save, string itemId, int quantity)

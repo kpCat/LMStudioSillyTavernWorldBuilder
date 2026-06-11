@@ -8,7 +8,7 @@ internal sealed class GameRandomDirectorService
 {
     private static readonly string[] RuntimeTriggers = { "turnEnd", "travel", "action" };
     private readonly GameDesignInterviewService _designInterviewService = new();
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private readonly JsonSerializerOptions _jsonOptions = GenerationJsonOptions.PromptJson;
 
     public GameRandomDirectorReport BuildReport(GameProjectData project)
     {
