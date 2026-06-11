@@ -612,9 +612,26 @@ internal partial class PlayForm : Form
         btnStartCombat.Enabled = !_save.Combat.IsActive && scene.StartsCombat;
         btnExecuteCombatAction.Enabled = _save.Combat.IsActive && isPlayerTurn && lvCombatActions.SelectedItems.Count > 0 && lvCombatants.SelectedItems.Count > 0;
         btnEndCombatTurn.Enabled = _save.Combat.IsActive;
-        lblCombatHint.Text = actor == null
-            ? "Бой не активен."
-            : "Ход: " + (string.IsNullOrWhiteSpace(actor.Name) ? actor.RuntimeId : actor.Name);
+        if (actor == null)
+        {
+            lblCombatHint.Text = "Бой не активен.";
+            return;
+        }
+
+        var actorName = string.IsNullOrWhiteSpace(actor.Name) ? actor.RuntimeId : actor.Name;
+        if (_save.Combat.IsActive && isPlayerTurn && lvCombatActions.Items.Count == 0)
+        {
+            lblCombatHint.Text = "Ход: " + actorName + ". Нет доступных действий: не хватает ресурса, требования не выполнены или все действия на перезарядке. Нажмите 'Конец хода'.";
+            return;
+        }
+
+        if (_save.Combat.IsActive && !isPlayerTurn)
+        {
+            lblCombatHint.Text = "Ход противника: " + actorName + ".";
+            return;
+        }
+
+        lblCombatHint.Text = "Ход: " + actorName;
     }
 
     private void AddOperationLog(GameRuntimeOperationResult result)

@@ -2131,9 +2131,26 @@ public partial class MainForm : Form
         var isPlayerTurn = actor != null && !string.Equals(actor.Team, "enemy", StringComparison.OrdinalIgnoreCase);
         btnRuntimeExecuteCombatAction.Enabled = _currentSave.Combat.IsActive && isPlayerTurn && lvRuntimeCombatActions.SelectedItems.Count > 0 && lvRuntimeCombatants.SelectedItems.Count > 0;
         btnRuntimeEndCombatTurn.Enabled = _currentSave.Combat.IsActive;
-        lblRuntimeCombatHint.Text = actor == null
-            ? "Бой не активен."
-            : "Ход: " + (string.IsNullOrWhiteSpace(actor.Name) ? actor.RuntimeId : actor.Name);
+        if (actor == null)
+        {
+            lblRuntimeCombatHint.Text = "Бой не активен.";
+            return;
+        }
+
+        var actorName = string.IsNullOrWhiteSpace(actor.Name) ? actor.RuntimeId : actor.Name;
+        if (_currentSave.Combat.IsActive && isPlayerTurn && lvRuntimeCombatActions.Items.Count == 0)
+        {
+            lblRuntimeCombatHint.Text = "Ход: " + actorName + ". Нет доступных действий: не хватает ресурса, требования не выполнены или все действия на перезарядке. Нажмите 'Конец хода'.";
+            return;
+        }
+
+        if (_currentSave.Combat.IsActive && !isPlayerTurn)
+        {
+            lblRuntimeCombatHint.Text = "Ход противника: " + actorName + ".";
+            return;
+        }
+
+        lblRuntimeCombatHint.Text = "Ход: " + actorName;
     }
 
     private async Task SaveAutosaveProgressAsync()
